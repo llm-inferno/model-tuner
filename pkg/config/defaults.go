@@ -15,9 +15,3 @@ const DefaultStudentPercentile = float32(1.96)
 
 // predicted percent change in state values
 const DefaultPercentChange = float32(5.0)
-
-// relative step size used in numerical differentiation
-const DefaultStepSize = float32(0.01)
-
-// small value
-const Epsilon = float32(0.0001)

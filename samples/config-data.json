@@ -1,31 +1,30 @@
 {
     "filterData": {
-        "gammaFactor": 0.1,
+        "gammaFactor": 1.0,
         "errorLevel": 0.05,
-        "studentPercentile": 1.96,
-        "percentChange": 0.02,
-        "stepSize": 0.01
+        "tPercentile": 1.96
     },
     "modelData": {
         "initState": [
-            0.5,
-            1.0,
-            200
+            24,
+            0.6
+        ],
+        "percentChange": [
+            0.05,
+            0.05
         ],
         "boundedState": true,
         "minState": [
-            0.01,
-            0.1,
-            10
+            4.0,
+            0.1
         ],
         "maxState": [
-            0.99,
-            9.99,
-            1000
+            48,
+            2.0
         ],
         "expectedObservations": [
-            0.7,
-            2.0
+            500,
+            50
         ]
     }
 }
