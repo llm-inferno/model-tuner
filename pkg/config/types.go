@@ -8,18 +8,17 @@ type ConfigData struct {
 
 // Filter configuration data
 type FilterData struct {
-	GammaFactor       float32 `json:"gammaFactor"`       // gamma factor
-	ErrorLevel        float32 `json:"errorLevel"`        // error level percentile
-	StudentPercentile float32 `json:"studentPercentile"` // tail of student distribution
-	PercentChange     float32 `json:"percentChange"`     // percent change in state
-	StepSize          float32 `json:"stepSize"`          // relative step size
+	GammaFactor float64 `json:"gammaFactor"` // gamma factor
+	ErrorLevel  float64 `json:"errorLevel"`  // error level percentile
+	TPercentile float64 `json:"tPercentile"` // tail of student distribution
 }
 
 // Model configuration data
 type ModelData struct {
-	InitState            []float32 `json:"initState"`            // initial state of model parameters
+	InitState            []float64 `json:"initState"`            // initial state of model parameters
+	PercentChange        []float64 `json:"percentChange"`        // percent change in state
 	BoundedState         bool      `json:"boundedState"`         // are the state values bounded
-	MinState             []float32 `json:"minState"`             // lower bound on state
-	MaxState             []float32 `json:"maxState"`             // upper bound on state
-	ExpectedObservations []float32 `json:"expectedObservations"` // expected values of observations
+	MinState             []float64 `json:"minState"`             // lower bound on state
+	MaxState             []float64 `json:"maxState"`             // upper bound on state
+	ExpectedObservations []float64 `json:"expectedObservations"` // expected values of observations
 }
