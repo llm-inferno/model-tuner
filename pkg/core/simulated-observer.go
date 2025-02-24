@@ -6,8 +6,8 @@ import (
 	"github.ibm.com/modeling-analysis/queue-analysis/pkg/queue"
 )
 
-type SimulatedMonitor struct {
-	BaseMonitor
+type SimulatedObserver struct {
+	BaseObserver
 
 	rpm          float32
 	avgNumTokens float32
@@ -16,9 +16,9 @@ type SimulatedMonitor struct {
 	maxBatchSize int
 }
 
-func NewSimulatedMonitor(rpm, avgNumTokens, alpha, beta, percentNoise float32, maxBatchSize int) *SimulatedMonitor {
-	return &SimulatedMonitor{
-		BaseMonitor: BaseMonitor{},
+func NewSimulatedObserver(rpm, avgNumTokens, alpha, beta, percentNoise float32, maxBatchSize int) *SimulatedObserver {
+	return &SimulatedObserver{
+		BaseObserver: BaseObserver{},
 
 		rpm:          rpm,
 		avgNumTokens: avgNumTokens,
@@ -29,7 +29,7 @@ func NewSimulatedMonitor(rpm, avgNumTokens, alpha, beta, percentNoise float32, m
 	}
 }
 
-func (m *SimulatedMonitor) GetEnvironment() *Environment {
+func (m *SimulatedObserver) GetEnvironment() *Environment {
 
 	// calculate state-dependent service rate
 	servRate := make([]float32, m.maxBatchSize)

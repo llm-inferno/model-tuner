@@ -1,9 +1,9 @@
 package core
 
-type Monitor interface {
+type Observer interface {
 	GetEnvironment() *Environment
 }
 
 // abstract class
-type BaseMonitor struct {
+type BaseObserver struct {
 }

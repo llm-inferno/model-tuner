@@ -32,7 +32,7 @@ func main() {
 	alpha := float32(19)
 	beta := float32(1)
 	percentNoise := float32(0.05)
-	monitor := core.NewSimulatedMonitor(rpm, avgNumTokens, alpha, beta, percentNoise, maxBatchSize)
+	monitor := core.NewSimulatedObserver(rpm, avgNumTokens, alpha, beta, percentNoise, maxBatchSize)
 
 	// create tuner
 	tuner, err := core.NewTuner(&configData, monitor)
