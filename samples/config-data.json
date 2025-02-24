@@ -10,20 +10,20 @@
             0.6
         ],
         "percentChange": [
-            0.05,
-            0.05
+            0.06,
+            0.06
         ],
         "boundedState": true,
         "minState": [
             4.0,
-            0.1
+            0.2
         ],
         "maxState": [
-            48,
+            50,
             2.0
         ],
         "expectedObservations": [
-            500,
+            300,
             50
         ]
     }
