@@ -7,6 +7,7 @@ import (
 
 	"github.ibm.com/modeling-analysis/model-tuner/pkg/config"
 	"github.ibm.com/modeling-analysis/model-tuner/pkg/core"
+	"github.ibm.com/modeling-analysis/model-tuner/pkg/utils"
 )
 
 func main() {
@@ -26,16 +27,53 @@ func main() {
 	}
 
 	// configure simulated system
-	rpm := float32(35.2)
-	maxBatchSize := 48
-	avgNumTokens := float32(1024)
-	alpha := float32(19)
-	beta := float32(1)
-	percentNoise := float32(0.05)
-	monitor := core.NewSimulatedObserver(rpm, avgNumTokens, alpha, beta, percentNoise, maxBatchSize)
+	phase1 := 20
+	phase2 := 20
+	phase3 := 20
+	total := phase1 + phase2 + phase3
+
+	rpm := make([]float32, total)
+	avgNumTokens := make([]float32, total)
+	alpha := make([]float32, total)
+	beta := make([]float32, total)
+	percentNoise := make([]float32, total)
+	maxBatchSize := make([]int, total)
+
+	// phase 1
+	for i := 0; i < phase1; i++ {
+		rpm[i] = float32(35.2)
+		maxBatchSize[i] = 48
+		avgNumTokens[i] = float32(1024)
+		alpha[i] = float32(18)
+		beta[i] = float32(1)
+		percentNoise[i] = float32(0.05)
+	}
+	// phase 2
+	for i := phase1; i < phase1+phase2; i++ {
+		rpm[i] = float32(35.2)
+		maxBatchSize[i] = 48
+		avgNumTokens[i] = float32(1024)
+		alpha[i] = float32(22)
+		beta[i] = float32(0.7)
+		percentNoise[i] = float32(0.05)
+	}
+	// phase 3
+	for i := phase1 + phase2; i < phase1+phase2+phase3; i++ {
+		rpm[i] = float32(35.2)
+		maxBatchSize[i] = 48
+		avgNumTokens[i] = float32(1024)
+		alpha[i] = float32(18)
+		beta[i] = float32(1)
+		percentNoise[i] = float32(0.05)
+	}
+
+	observer := core.NewSimulatedObserver(rpm, avgNumTokens, alpha, beta, percentNoise, maxBatchSize)
+	if observer == nil {
+		fmt.Println("invalid parameters for observer")
+	}
 
 	// create tuner
-	tuner, err := core.NewTuner(&configData, monitor)
+	tuner, err := core.NewTuner(&configData, observer)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -43,6 +81,17 @@ func main() {
 	fmt.Println(tuner)
 
 	// run tuner a number of steps
-	numSteps := 20
-	tuner.Run(numSteps)
+	numSteps := phase1 + phase2 + phase3
+	for k := 0; k < numSteps; k++ {
+		if err := tuner.Run(); err != nil {
+			fmt.Println(err)
+			continue
+		}
+		// print state
+		fmt.Printf("%d : %s;   %s;   %s\n",
+			k,
+			utils.VecString("X", tuner.X()),
+			utils.VecString("Delta", tuner.Innovation()),
+			utils.MatString("P", tuner.P()))
+	}
 }

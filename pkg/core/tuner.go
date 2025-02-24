@@ -6,7 +6,6 @@ import (
 
 	kalman "github.ibm.com/modeling-analysis/kalman-filter/pkg/core"
 	"github.ibm.com/modeling-analysis/model-tuner/pkg/config"
-	"github.ibm.com/modeling-analysis/model-tuner/pkg/utils"
 	"github.ibm.com/modeling-analysis/queue-analysis/pkg/queue"
 	"gonum.org/v1/gonum/mat"
 )
@@ -62,36 +61,34 @@ func NewTuner(configData *config.ConfigData, observer Observer) (tuner *Tuner, e
 	}, nil
 }
 
-func (t *Tuner) Run(numSteps int) {
-	for i := 0; i < numSteps; i++ {
-		// get environment
-		env = t.observer.GetEnvironment()
+func (t *Tuner) Run() error {
+	// get environment
+	env = t.observer.GetEnvironment()
 
-		// predict
-		X := t.filter.State()
-		Q, err := t.configurator.GetStateCov(X)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		if err := t.filter.Predict(Q); err != nil {
-			fmt.Println(err)
-			continue
-		}
+	// predict
 
-		// correct
-		Z := env.GetObservations()
-		if err := t.filter.Update(Z, t.configurator.R); err != nil {
-			fmt.Println(err)
-			continue
-		}
+	// option to adjust Q based on X
+	// X := t.filter.State()
+	// Q, err := t.configurator.GetStateCov(X)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	return err
+	// }
 
-		// print state
-		fmt.Printf("%s;   %s;   %s\n",
-			utils.VecString("X", t.filter.State()),
-			utils.VecString("Delta", t.filter.Innovation()),
-			utils.MatString("P", t.filter.P))
+	Q := t.filter.Q
+	if err := t.filter.Predict(Q); err != nil {
+		fmt.Println(err)
+		return err
 	}
+
+	// correct
+	Z := env.GetObservations()
+	if err := t.filter.Update(Z, t.configurator.R); err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	return nil
 }
 
 func observationFunc(x *mat.VecDense) *mat.VecDense {
@@ -121,6 +118,18 @@ func observationFunc(x *mat.VecDense) *mat.VecDense {
 	avgTokenTime := float64(queue.GetAvgServTime() / float32(avgNumTokens))
 
 	return mat.NewVecDense(2, []float64{avgWaitTime, avgTokenTime})
+}
+
+func (t *Tuner) X() *mat.VecDense {
+	return t.filter.State()
+}
+
+func (t *Tuner) Innovation() *mat.VecDense {
+	return t.filter.Innovation()
+}
+
+func (t *Tuner) P() *mat.Dense {
+	return t.filter.P
 }
 
 func (t *Tuner) String() string {
