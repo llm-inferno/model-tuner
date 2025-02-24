@@ -14,17 +14,17 @@ import (
 type Tuner struct {
 	configurator *Configurator
 	filter       *kalman.ExtendedKalmanFilter
-	monitor      Monitor
+	observer     Observer
 }
 
 var env *Environment
 
-func NewTuner(configData *config.ConfigData, monitor Monitor) (tuner *Tuner, err error) {
+func NewTuner(configData *config.ConfigData, observer Observer) (tuner *Tuner, err error) {
 	var c *Configurator
 	var f *kalman.ExtendedKalmanFilter
 
 	// get environment
-	env = monitor.GetEnvironment()
+	env = observer.GetEnvironment()
 
 	// create configurator
 	if c, err = NewConfigurator(configData); err != nil {
@@ -58,14 +58,14 @@ func NewTuner(configData *config.ConfigData, monitor Monitor) (tuner *Tuner, err
 	return &Tuner{
 		configurator: c,
 		filter:       f,
-		monitor:      monitor,
+		observer:     observer,
 	}, nil
 }
 
 func (t *Tuner) Run(numSteps int) {
 	for i := 0; i < numSteps; i++ {
 		// get environment
-		env = t.monitor.GetEnvironment()
+		env = t.observer.GetEnvironment()
 
 		// predict
 		X := t.filter.State()
