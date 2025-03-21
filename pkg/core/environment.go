@@ -11,9 +11,11 @@ type Environment struct {
 	Lambda              float32 // request arrival rate (per minute)
 	AvgTokensPerRequest float32 // average number of tokens per request
 	MaxBatchSize        int     // maximum batch size
+	BatchSize           int     // batch size
 
 	AvgQueueTime float32 // average request queueing time (msec)
 	AvgTokenTime float32 // average inter token latency (msec)
+	Throughput   float32 // throughput (requests per minute)
 }
 
 func (e *Environment) Valid() bool {
@@ -27,7 +29,7 @@ func (e *Environment) GetObservations() *mat.VecDense {
 func (e *Environment) String() string {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "Environment: ")
-	fmt.Fprintf(&b, "rpm=%5.2f; avgTokens=%6.2f; maxBatch=%d; avgWait=%6.2f; avgITL=%6.2f",
-		e.Lambda, e.AvgTokensPerRequest, e.MaxBatchSize, e.AvgQueueTime, e.AvgTokenTime)
+	fmt.Fprintf(&b, "rpm=%5.2f; avgTokens=%6.2f; maxBatch=%d; batchSize=%d; avgWait=%10.6f; avgITL=%10.6f",
+		e.Lambda, e.AvgTokensPerRequest, e.MaxBatchSize, e.BatchSize, e.AvgQueueTime, e.AvgTokenTime)
 	return b.String()
 }

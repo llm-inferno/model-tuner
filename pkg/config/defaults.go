@@ -15,3 +15,5 @@ const DefaultStudentPercentile = float32(1.96)
 
 // predicted percent change in state values
 const DefaultPercentChange = float32(5.0)
+
+const PrometheusAddress = "https://thanos-querier-openshift-monitoring.apps.fmaas-platform-eval.fmaas.res.ibm.com"
