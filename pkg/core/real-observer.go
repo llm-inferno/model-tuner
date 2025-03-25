@@ -31,13 +31,15 @@ func NewRealObserver() (*RealObserver, error) {
 }
 
 func (obs *RealObserver) GetEnvironment() *Environment {
+	var namespace, modelName, duration string
+	namespace, modelName, duration = "platform-opt", "opt-125", "1m"
 	metrics := map[string]string{
-		"rpm":          `sum(rate(vllm:request_success_total{namespace="platform-opt", model_name="facebook/opt-125m"}[1m]))`,
-		"avgNumTokens": `sum(rate(vllm:generation_tokens_total{namespace="platform-opt", model_name=~".*opt-125.*"}[1m])) / sum(rate(vllm:request_success_total[1m]))`,
-		"batchSize":    `max_over_time(vllm:num_requests_running{namespace="platform-opt", model_name=~".*opt-125.*"}[1m])`,
-		"avgWaitTime":  `sum(rate(vllm:time_in_queue_requests_sum{namespace="platform-opt", model_name=~".*opt-125.*"}[1m])) / sum(rate(vllm:time_in_queue_requests_count{namespace="platform-opt", model_name=~".*opt-125.*"}[1m]))`,
-		"avgTokenTime": `sum(rate(vllm:time_per_output_token_seconds_sum{namespace="platform-opt", model_name=~".*opt-125.*"}[1m])) / sum(rate(vllm:time_per_output_token_seconds_count{namespace="platform-opt", model_name=~".*opt-125.*"}[1m]))`,
-		"throughput":   `sum(rate(vllm:request_success_total{namespace="platform-opt", model_name=~".*opt-125.*"}[1m])) / sum(rate(vllm:time_per_output_token_seconds_count{namespace="platform-opt", model_name=~".*opt-125.*"}[1m]))`,
+		"rpm":          fmt.Sprintf(`sum(rate(vllm:request_success_total{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration),
+		"avgNumTokens": fmt.Sprintf(`sum(rate(vllm:generation_tokens_total{namespace="%s", model_name=~".*%s.*"}[%s])) / sum(rate(vllm:request_success_total{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration, namespace, modelName, duration),
+		"batchSize":    fmt.Sprintf(`avg_over_time(vllm:num_requests_running{namespace="%s", model_name=~".*%s.*"}[%s])`, namespace, modelName, duration),
+		"avgWaitTime":  fmt.Sprintf(`sum(rate(vllm:request_queue_time_seconds_sum{namespace="%s", model_name=~".*%s.*"}[%s])) / sum(rate(vllm:request_queue_time_seconds_count{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration, namespace, modelName, duration),
+		"avgTokenTime": fmt.Sprintf(`sum(rate(vllm:time_per_output_token_seconds_sum{namespace="%s", model_name=~".*%s.*"}[%s])) / sum(rate(vllm:time_per_output_token_seconds_count{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration, namespace, modelName, duration),
+		"throughput":   fmt.Sprintf(`sum(rate(vllm:request_success_total{namespace="%s", model_name=~".*%s.*"}[%s])) / sum(rate(vllm:time_per_output_token_seconds_count{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration, namespace, modelName, duration),
 	}
 
 	results := make(map[string]float64)
