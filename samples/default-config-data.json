@@ -23,8 +23,8 @@
             2.0
         ],
         "expectedObservations": [
-            100,
-            20
+            1,
+            3
         ]
     }
 }

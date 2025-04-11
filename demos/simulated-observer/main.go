@@ -1,29 +1,17 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
-	"github.ibm.com/modeling-analysis/model-tuner/pkg/config"
 	"github.ibm.com/modeling-analysis/model-tuner/pkg/core"
 	"github.ibm.com/modeling-analysis/model-tuner/pkg/utils"
 )
 
 func main() {
 
-	// get configuration data from file
-	prefix := "../../samples/"
-	fname := prefix + "config-data.json"
-	bytes, err := os.ReadFile(fname)
+	configData, err := utils.LoadConfigForServer("default")
 	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	var configData config.ConfigData
-	if err := json.Unmarshal(bytes, &configData); err != nil {
-		fmt.Println(err)
-		return
+		fmt.Printf("Error in loading config data: %s\n", err)
 	}
 
 	// configure simulated system
@@ -73,7 +61,8 @@ func main() {
 	}
 
 	// create tuner
-	tuner, err := core.NewTuner(&configData, observer)
+	env := observer.GetEnvironment()
+	tuner, err := core.NewTuner(configData, env)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -83,6 +72,14 @@ func main() {
 	// run tuner a number of steps
 	numSteps := phase1 + phase2 + phase3
 	for k := 0; k < numSteps; k++ {
+		env := observer.GetEnvironment()
+		if env == nil {
+			fmt.Println("error getting the environment")
+			continue
+		}
+		fmt.Println(env.String())
+		tuner.UpdateEnvironment(env)
+
 		if err := tuner.Run(); err != nil {
 			fmt.Println(err)
 			continue
