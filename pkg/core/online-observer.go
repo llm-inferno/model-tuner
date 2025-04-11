@@ -1,3 +1,8 @@
+/*
+Online Observer acts as Prometheus client and the environement struct is returned using Prometheus queries
+To be able to use Online Observer, the user must set the secret bearer token and prometheus address as environment variable
+*/
+
 package core
 
 import (
@@ -5,41 +10,40 @@ import (
 	"log"
 	"os"
 
-	"github.ibm.com/modeling-analysis/model-tuner/pkg/config"
 	"github.ibm.com/modeling-analysis/model-tuner/pkg/metrics"
 )
 
 // observer is prom client that knows where to access the prometheus, and which queries to use to get the measurements from the environment
-type RealObserver struct {
+type OnlineObserver struct {
 	BaseObserver
 	promClient *metrics.PrometheusClient
 }
 
-func NewRealObserver() (*RealObserver, error) {
+func NewOnlineObserver() (*OnlineObserver, error) {
 	secretToken := os.Getenv("TOKEN")
 	if secretToken == "" {
 		return nil, fmt.Errorf("TOKEN is not set")
 	}
-	client, err := metrics.NewPrometheusClient(config.PrometheusAddress, secretToken)
+	promAddress := os.Getenv("PROMETHEUS_ADDRESS")
+	client, err := metrics.NewPrometheusClient(promAddress, secretToken)
 	if err != nil {
 		return nil, err
 	}
-	return &RealObserver{
+	return &OnlineObserver{
 		BaseObserver: BaseObserver{},
 		promClient:   client,
 	}, nil
 }
 
-func (obs *RealObserver) GetEnvironment() *Environment {
+func (obs *OnlineObserver) GetEnvironment() *Environment {
 	var namespace, modelName, duration string
 	namespace, modelName, duration = "platform-opt", "opt-125", "1m"
 	metrics := map[string]string{
 		"rpm":          fmt.Sprintf(`sum(rate(vllm:request_success_total{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration),
 		"avgNumTokens": fmt.Sprintf(`sum(rate(vllm:generation_tokens_total{namespace="%s", model_name=~".*%s.*"}[%s])) / sum(rate(vllm:request_success_total{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration, namespace, modelName, duration),
-		"batchSize":    fmt.Sprintf(`avg_over_time(vllm:num_requests_running{namespace="%s", model_name=~".*%s.*"}[%s])`, namespace, modelName, duration),
+		"batchSize":    fmt.Sprintf(`avg(avg_over_time(vllm:num_requests_running{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration),
 		"avgWaitTime":  fmt.Sprintf(`sum(rate(vllm:request_queue_time_seconds_sum{namespace="%s", model_name=~".*%s.*"}[%s])) / sum(rate(vllm:request_queue_time_seconds_count{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration, namespace, modelName, duration),
 		"avgTokenTime": fmt.Sprintf(`sum(rate(vllm:time_per_output_token_seconds_sum{namespace="%s", model_name=~".*%s.*"}[%s])) / sum(rate(vllm:time_per_output_token_seconds_count{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration, namespace, modelName, duration),
-		"throughput":   fmt.Sprintf(`sum(rate(vllm:request_success_total{namespace="%s", model_name=~".*%s.*"}[%s])) / sum(rate(vllm:time_per_output_token_seconds_count{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration, namespace, modelName, duration),
 	}
 
 	results := make(map[string]float64)
@@ -54,16 +58,15 @@ func (obs *RealObserver) GetEnvironment() *Environment {
 
 	return &Environment{
 		Lambda:              float32(results["rpm"]) * 60,
-		MaxBatchSize:        256, //int(maxBatchSize),
-		BatchSize:           int(results["batchSize"]),
+		MaxBatchSize:        256, // fixed
+		BatchSize:           float32(results["batchSize"]),
 		AvgTokensPerRequest: float32(results["avgNumTokens"]),
 		AvgQueueTime:        float32(results["avgWaitTime"]) * 1000,
 		AvgTokenTime:        float32(results["avgTokenTime"]) * 1000,
-		Throughput:          float32(results["throughput"]) * 60,
 	}
 }
 
-func (obs *RealObserver) fetchMetric(query string) (float64, error) {
+func (obs *OnlineObserver) fetchMetric(query string) (float64, error) {
 	value, err := obs.promClient.Query(query)
 	if err != nil {
 		return 0, err

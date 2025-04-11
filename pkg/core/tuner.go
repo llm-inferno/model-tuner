@@ -13,17 +13,18 @@ import (
 type Tuner struct {
 	configurator *Configurator
 	filter       *kalman.ExtendedKalmanFilter
-	observer     Observer
 }
 
 var env *Environment
 
-func NewTuner(configData *config.ConfigData, observer Observer) (tuner *Tuner, err error) {
+func NewTuner(configData *config.ConfigData, env *Environment) (tuner *Tuner, err error) {
 	var c *Configurator
 	var f *kalman.ExtendedKalmanFilter
 
-	// get environment
-	env = observer.GetEnvironment()
+	t := &Tuner{}
+
+	// update env
+	t.UpdateEnvironment(env)
 
 	// create configurator
 	if c, err = NewConfigurator(configData); err != nil {
@@ -53,28 +54,13 @@ func NewTuner(configData *config.ConfigData, observer Observer) (tuner *Tuner, e
 		return nil, err
 	}
 
-	// create tuner
-	return &Tuner{
-		configurator: c,
-		filter:       f,
-		observer:     observer,
-	}, nil
+	t.configurator = c
+	t.filter = f
+
+	return t, nil
 }
 
 func (t *Tuner) Run() error {
-	// get environment
-	env = t.observer.GetEnvironment()
-
-	// predict
-
-	// option to adjust Q based on X
-	// X := t.filter.State()
-	// Q, err := t.configurator.GetStateCov(X)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return err
-	// }
-
 	Q := t.filter.Q
 	if err := t.filter.Predict(Q); err != nil {
 		fmt.Println(err)
@@ -138,4 +124,13 @@ func (t *Tuner) String() string {
 	fmt.Fprintf(&b, "%v\n", t.configurator)
 	fmt.Fprintf(&b, "%v\n", env)
 	return b.String()
+}
+
+func (t *Tuner) UpdateEnvironment(envt *Environment) {
+	env = envt
+}
+
+func (t *Tuner) GetParams() *mat.VecDense {
+	// TODO: intelligent state return
+	return t.X()
 }

@@ -1,59 +1,43 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 
-	"github.ibm.com/modeling-analysis/model-tuner/pkg/config"
 	"github.ibm.com/modeling-analysis/model-tuner/pkg/core"
 	"github.ibm.com/modeling-analysis/model-tuner/pkg/utils"
 )
 
 func main() {
-
-	// get configuration data from file
-	prefix := "../../samples/"
-	fname := prefix + "config-data.json"
-	bytes, err := os.ReadFile(fname)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	var configData config.ConfigData
-	if err := json.Unmarshal(bytes, &configData); err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	observer, err := core.NewRealObserver()
+	observer, err := core.NewOnlineObserver()
 	if err != nil {
 		fmt.Printf("Error in Observer creation: %s\n", err)
 	}
-
-	// env := observer.GetEnvironment()
-
-	// fmt.Println(env.String())
-
-	// create tuner
-	tuner, err := core.NewTuner(&configData, observer)
+	configData, err := utils.LoadConfigForServer("default")
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("Error in loading config data: %s\n", err)
+	}
+
+	// create tuner by supplying the appropriate environment
+	env := observer.GetEnvironment()
+	tuner, err := core.NewTuner(configData, env)
+	if err != nil {
+		fmt.Printf("Error in creating the tuner: %s\n", err)
 		return
 	}
 	fmt.Println(tuner)
 
 	// run tuner a number of steps
-	numSteps := 100
+	numSteps := 200
 	for k := 0; k < numSteps; k++ {
 		env := observer.GetEnvironment()
-
 		if env == nil {
 			fmt.Println("error getting the environment")
 			continue
 		}
 		fmt.Println(env.String())
+		tuner.UpdateEnvironment(env)
+
 		if err := tuner.Run(); err != nil {
 			fmt.Println(err)
 			continue

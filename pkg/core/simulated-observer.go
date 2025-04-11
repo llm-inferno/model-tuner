@@ -1,3 +1,7 @@
+/*
+Simulated Observer simulates randomness in wait and token time
+*/
+
 package core
 
 import (
