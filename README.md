@@ -10,7 +10,7 @@ The user would also need to provide a config file to initialize the tuner.
 
 ## Observers
 
-The Tuner can use four different observers — Simulated, Offline, and Online Observer.
+The Tuner can use three different observers — Simulated, Offline, and Online Observer.
 ### Simulated Observer
 The `SimulatedObserver` generates synthetic metrics, particularly queue wait time and token service time, for a state-dependent queueing model. It uses predefined input parameters such as arrival rate, average number of tokens, and service rate coefficients, and introduces controlled noise to mimic real-world variability in system behavior. An example program is provided in `demos/simulated-observer`.
 
