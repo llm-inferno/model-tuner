@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"fmt"
+	"sync"
 
 	kalman "github.ibm.com/modeling-analysis/kalman-filter/pkg/core"
 	"github.ibm.com/modeling-analysis/model-tuner/pkg/config"
@@ -16,6 +17,7 @@ type Tuner struct {
 }
 
 var env *Environment
+var mutex sync.Mutex
 
 func NewTuner(configData *config.ConfigData, env *Environment) (tuner *Tuner, err error) {
 	var c *Configurator
@@ -91,6 +93,7 @@ func observationFunc(x *mat.VecDense) *mat.VecDense {
 	for n := 1; n <= maxBatchSize; n++ {
 		servRate[n-1] = float32(n) / (alpha + beta*float32(n)) / float32(avgNumTokens)
 	}
+	// fmt.Println("servRate:", servRate)
 
 	// create queueing model
 	maxQueueSize := 100 * maxBatchSize
@@ -127,6 +130,8 @@ func (t *Tuner) String() string {
 }
 
 func (t *Tuner) UpdateEnvironment(envt *Environment) {
+	mutex.Lock()
+	defer mutex.Unlock()
 	env = envt
 }
 
