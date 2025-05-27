@@ -58,7 +58,7 @@ func (obs *OnlineObserver) GetEnvironment() *Environment {
 
 	return &Environment{
 		Lambda:              float32(results["rpm"]) * 60,
-		MaxBatchSize:        256, // fixed
+		MaxBatchSize:        8, // fixed
 		BatchSize:           float32(results["batchSize"]),
 		AvgTokensPerRequest: float32(results["avgNumTokens"]),
 		AvgQueueTime:        float32(results["avgWaitTime"]) * 1000,
