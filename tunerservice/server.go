@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.ibm.com/ai-platform-optimization/inferno/services/controller"
+	"github.com/llm-inferno/inferno/services/controller"
 )
 
 var TS *TunerService

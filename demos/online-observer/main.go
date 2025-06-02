@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.ibm.com/modeling-analysis/model-tuner/pkg/core"
-	"github.ibm.com/modeling-analysis/model-tuner/pkg/utils"
+	"github.com/llm-inferno/model-tuner/pkg/core"
+	"github.com/llm-inferno/model-tuner/pkg/utils"
 )
 
 type record struct {

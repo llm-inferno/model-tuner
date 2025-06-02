@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.ibm.com/modeling-analysis/model-tuner/pkg/config"
+	"github.com/llm-inferno/model-tuner/pkg/config"
 	"gonum.org/v1/gonum/mat"
 )
 

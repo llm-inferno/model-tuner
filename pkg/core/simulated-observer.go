@@ -7,7 +7,7 @@ package core
 import (
 	"math/rand/v2"
 
-	"github.ibm.com/modeling-analysis/queue-analysis/pkg/queue"
+	"github.com/llm-inferno/queue-analysis/pkg/queue"
 )
 
 type SimulatedObserver struct {
