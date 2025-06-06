@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"sync"
 
+	"model-tuner/pkg/config"
+
 	kalman "github.com/llm-inferno/kalman-filter/pkg/core"
-	"github.com/llm-inferno/model-tuner/pkg/config"
 	"github.com/llm-inferno/queue-analysis/pkg/queue"
 	"gonum.org/v1/gonum/mat"
 )

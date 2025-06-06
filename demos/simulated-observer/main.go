@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/llm-inferno/model-tuner/pkg/core"
-	"github.com/llm-inferno/model-tuner/pkg/utils"
+	"model-tuner/pkg/core"
+	"model-tuner/pkg/utils"
 )
 
 func main() {

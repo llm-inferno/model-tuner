@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/llm-inferno/model-tuner/tunerservice"
+	"model-tuner/tunerservice"
 )
 
 func main() {
