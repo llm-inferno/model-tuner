@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/llm-inferno/inferno/services/controller"
 )
 
 var TS *TunerService
@@ -26,7 +25,7 @@ func NewTunerServer() (*TunerServer, error) {
 		router: gin.Default(),
 	}
 	ts.router.GET("/getparams", getparams)
-	CollectorURL = controller.GetURL(CollectorHostEnvName, CollectorPortEnvName)
+	CollectorURL = GetURL(CollectorHostEnvName, CollectorPortEnvName)
 	return ts, nil
 }
 
