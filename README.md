@@ -1,10 +1,12 @@
 # model-tuner
 
-Tuner of queueing model parameters using Extended Kalman Filter.
+The model tuner dynamically updates the parameters of the queueing model based on observations, using an Extended Kalman Filter.
+
+![description](docs/figs/Slide2.png)
 
 ## High-level architecture
 
-![architecture](docs/figs/model-tuner/Slide1.png)
+![filter](docs/figs/Slide1.png)
 **Note:** The model tuner can be used as a standalone tuner for any model, not necessarily a queueing model, with the user plugging in their own observation function with template `func observationFunc(x *mat.VecDense) *mat.VecDense {}` in file `pkg/core/tuner.go`.
 The user would also need to provide a config file to initialize the tuner.
 
