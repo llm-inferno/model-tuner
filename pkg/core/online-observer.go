@@ -10,7 +10,7 @@ import (
 	"log"
 	"os"
 
-	"model-tuner/pkg/metrics"
+	"github.com/llm-inferno/model-tuner/pkg/metrics"
 )
 
 // observer is prom client that knows where to access the prometheus, and which queries to use to get the measurements from the environment

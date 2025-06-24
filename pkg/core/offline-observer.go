@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"model-tuner/pkg/utils"
+	"github.com/llm-inferno/model-tuner/pkg/utils"
 )
 
 type OfflineObserver struct {

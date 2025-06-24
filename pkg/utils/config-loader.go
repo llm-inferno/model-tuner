@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"model-tuner/pkg/config"
+	"github.com/llm-inferno/model-tuner/pkg/config"
 )
 
 func LoadConfigForServer(serverName string) (*config.ConfigData, error) {
