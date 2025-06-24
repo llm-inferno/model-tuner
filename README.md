@@ -66,5 +66,5 @@ Responds with:
 
 ### Configuration
 
-1. The environement variables `TUNER_HOST`, `TUNER_PORT`, `COLLECTOR_HOST` and `COLLECTOR_PORT` can be set by running `source setparams.sh`. The script `setparams.sh` can be found in [folder](https://github.com/llm-inferno/inferno/tree/main/services/scripts)
+1. The environement variables `TUNER_HOST`, `TUNER_PORT`, `COLLECTOR_HOST` and `COLLECTOR_PORT` can be set by running `source setparams.sh`. The script `setparams.sh` can be found in [folder](https://github.com/llm-inferno/control-loop/tree/main/scripts)
 2. The tuning interval is defined via the `tunerPeriod` parameter (in seconds).  
