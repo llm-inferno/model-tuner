@@ -5,8 +5,8 @@ go 1.23.2
 toolchain go1.24.0
 
 require (
-	github.com/llm-inferno/kalman-filter v0.0.0-20250602181421-2653d14467d4
-	github.com/llm-inferno/queue-analysis v0.0.0-20250602150849-402e8a06efa7
+	github.com/llm-inferno/kalman-filter v0.1.0
+	github.com/llm-inferno/queue-analysis v0.1.0
 	github.com/prometheus/client_golang v1.21.1
 	github.com/prometheus/common v0.63.0
 	gonum.org/v1/gonum v0.16.0
