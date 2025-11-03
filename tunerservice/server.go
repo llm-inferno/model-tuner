@@ -38,9 +38,7 @@ func (ts *TunerServer) Run(tunerPeriod int) {
 		return
 	}
 
-	Wg.Add(1)
-	go func() {
-		defer Wg.Done()
+	Wg.Go(func() {
 		host := "localhost"
 		port := "8080"
 
@@ -51,13 +49,11 @@ func (ts *TunerServer) Run(tunerPeriod int) {
 			port = p
 		}
 		ts.router.Run(host + ":" + port)
-	}()
+	})
 
 	// also start periodic environment updates
 	if tunerPeriod > 0 {
-		Wg.Add(1)
-		go func() {
-			defer Wg.Done()
+		Wg.Go(func() {
 			agentTicker := time.NewTicker(time.Second * time.Duration(tunerPeriod))
 			defer agentTicker.Stop()
 
@@ -66,6 +62,6 @@ func (ts *TunerServer) Run(tunerPeriod int) {
 					fmt.Printf("%v: skipping cycle ... reason=%s\n", time.Now().Format("15:04:05.000"), err.Error())
 				}
 			}
-		}()
+		})
 	}
 }

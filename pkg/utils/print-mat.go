@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"fmt"
+	"math"
 
 	"gonum.org/v1/gonum/mat"
 )
@@ -12,8 +13,12 @@ func VecString(name string, v *mat.VecDense) string {
 	x := v.RawVector().Data
 	var b bytes.Buffer
 	fmt.Fprint(&b, name+"=[")
-	for i := 0; i < len(x); i++ {
-		fmt.Fprintf(&b, "%10.3f ", x[i])
+	for i := range x {
+		fmtString := "%10.3f "
+		if math.Abs(x[i]) < 0.01 {
+			fmtString = "%10.3E "
+		}
+		fmt.Fprintf(&b, fmtString, x[i])
 	}
 	fmt.Fprint(&b, "]")
 	return b.String()
@@ -26,10 +31,14 @@ func MatString(name string, m *mat.Dense) string {
 	var b bytes.Buffer
 	fmt.Fprint(&b, name+"=[")
 	k := 0
-	for i := 0; i < nRows; i++ {
+	for range nRows {
 		fmt.Fprint(&b, "[")
 		for j := 0; j < nCols; j++ {
-			fmt.Fprintf(&b, "%10.3f ", x[k])
+			fmtString := "%10.3f "
+			if math.Abs(x[k]) < 0.01 {
+				fmtString = "%10.3E "
+			}
+			fmt.Fprintf(&b, fmtString, x[k])
 			k++
 		}
 		fmt.Fprint(&b, "]")

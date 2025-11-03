@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/llm-inferno/model-tuner/pkg/core"
+	"github.com/llm-inferno/model-tuner/pkg/observer"
 	"github.com/llm-inferno/model-tuner/pkg/utils"
 )
 
@@ -65,7 +66,7 @@ func main() {
 	scanner.Scan()
 	outputLen, _ := strconv.Atoi(strings.TrimSpace(scanner.Text()))
 
-	observer, err := core.NewOnlineObserver()
+	observer, err := observer.NewOnlineObserver()
 	if err != nil {
 		fmt.Printf("Error in Observer creation: %s\n", err)
 	}
@@ -76,9 +77,9 @@ func main() {
 
 	// create tuner by supplying the observers environment
 	env := observer.GetEnvironment()
-	tuner, err := core.NewTuner(configData, env)
+	tuner, _, err := core.SetupTunerForQueueingModel(configData, env, "decode")
 	if err != nil {
-		fmt.Printf("Error in creating the tuner: %s\n", err)
+		fmt.Println(err)
 		return
 	}
 	fmt.Println(tuner)
@@ -109,7 +110,7 @@ func main() {
 	}()
 
 loop:
-	for k := 0; k < numSteps; k++ {
+	for k := range numSteps {
 		select {
 		case <-done:
 			break loop // exit loop cleanly
@@ -117,15 +118,14 @@ loop:
 			// continue regular loop
 		}
 
-		env := observer.GetEnvironment()
+		env = observer.GetEnvironment()
 		if env == nil {
 			fmt.Println("error getting the environment")
 			continue
 		}
 		fmt.Println(env.String())
-		tuner.UpdateEnvironment(env)
 
-		if err := tuner.Run(); err != nil {
+		if err := tuner.Run(env); err != nil {
 			fmt.Println(err)
 			continue
 		}
@@ -133,13 +133,15 @@ loop:
 		x := tuner.X().RawVector().Data
 		delta := tuner.Innovation().RawVector().Data
 
+		envData := env.(*core.EnvironmentDecode)
+
 		r := record{
-			RPM:          env.Lambda,
-			Tokens:       env.AvgTokensPerRequest,
-			MaxBatchSize: env.MaxBatchSize,
-			AvgBatchSize: env.BatchSize,
-			AvgWait:      env.AvgQueueTime,
-			AvgItl:       env.AvgTokenTime,
+			RPM:          envData.Lambda,
+			Tokens:       envData.AvgOutputTokens,
+			MaxBatchSize: envData.MaxBatchSize,
+			AvgBatchSize: envData.BatchSize,
+			AvgWait:      envData.AvgQueueTime,
+			AvgItl:       envData.AvgTokenDecodeTime,
 			Alpha:        x[0],
 			Beta:         x[1],
 			DiffWait:     delta[0],

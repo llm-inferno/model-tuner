@@ -46,11 +46,8 @@ func (ts *TunerService) UpdateTunersAndRun() error {
 		tuner, exists := ts.Tuners[serverName]
 		mutex.Unlock()
 
-		// if tuner exists, just update the environment
-		if exists {
-			tuner.UpdateEnvironment(env)
-		} else {
-			// Otherwise, create a new tuner
+		// create a new tuner if it does not exist
+		if !exists {
 			configData, err := utils.LoadConfigForServer("default")
 			if err != nil {
 				return fmt.Errorf("error fetching config for server %s: %v", serverName, err)
@@ -60,12 +57,16 @@ func (ts *TunerService) UpdateTunersAndRun() error {
 			if err != nil {
 				return fmt.Errorf("error creating tuner for %s: %v", serverName, err)
 			}
+			observationFunc := core.NewQueueModelSystemFuncCreatorDecode(tuner)
+			if err = tuner.SetObservationFunc(observationFunc); err != nil {
+				return fmt.Errorf("error setting tuner system functionfor %s: %v", serverName, err)
+			}
 			mutex.Lock()
 			ts.Tuners[serverName] = tuner
 			mutex.Unlock()
 		}
 		fmt.Println(env.String())
-		if err := tuner.Run(); err != nil {
+		if err := tuner.Run(env); err != nil {
 			return fmt.Errorf("error running tuner for %s: %v", serverName, err)
 		}
 
@@ -82,7 +83,7 @@ func (ts *TunerService) UpdateTunersAndRun() error {
 	return nil
 }
 
-func (ts *TunerService) GetAllEnvironments() (map[string]*core.Environment, error) {
+func (ts *TunerService) GetAllEnvironments() (map[string]core.Environment, error) {
 	// call collector to get updated environments for the managed servers
 	endPoint := CollectorURL + "/" + CollectEnvVerb
 	// fmt.Println("Requesting:", endPoint)
@@ -96,7 +97,7 @@ func (ts *TunerService) GetAllEnvironments() (map[string]*core.Environment, erro
 		return nil, fmt.Errorf("error in reading http response body: %v", readErr)
 	}
 
-	envInfo := make(map[string]*core.Environment)
+	envInfo := make(map[string]core.Environment)
 	jsonErr := json.Unmarshal(body, &envInfo)
 	if jsonErr != nil {
 		return nil, fmt.Errorf("error in unmarshalling json: %v", jsonErr)

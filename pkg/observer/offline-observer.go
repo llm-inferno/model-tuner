@@ -2,12 +2,13 @@
 Offline Observer gets environment values from a file
 */
 
-package core
+package observer
 
 import (
 	"fmt"
 	"strconv"
 
+	"github.com/llm-inferno/model-tuner/pkg/core"
 	"github.com/llm-inferno/model-tuner/pkg/utils"
 )
 
@@ -29,7 +30,7 @@ func NewOfflineObserver(envFilePath string) (*OfflineObserver, error) {
 	}, nil
 }
 
-func (o *OfflineObserver) GetEnvironment() *Environment {
+func (o *OfflineObserver) GetEnvironment() core.Environment {
 	if o.CurrIndex >= len(o.Data) {
 		fmt.Println("Warning: No more data to read the environement")
 		return nil
@@ -40,18 +41,13 @@ func (o *OfflineObserver) GetEnvironment() *Environment {
 
 	lambda, _ := strconv.ParseFloat(row[0], 32)
 	avgTokens, _ := strconv.ParseFloat(row[1], 32)
-	maxBatchSize, _ := strconv.ParseFloat(row[2], 32)
-	batchSize, _ := strconv.ParseFloat(row[3], 32)
+	batchSize, _ := strconv.ParseFloat(row[2], 32)
+	maxBatchSize, _ := strconv.ParseFloat(row[3], 32)
 	avgQueueTime, _ := strconv.ParseFloat(row[4], 32)
 	avgTokenTime, _ := strconv.ParseFloat(row[5], 32)
 
-	env := &Environment{
-		Lambda:              float32(lambda),
-		AvgTokensPerRequest: float32(avgTokens),
-		MaxBatchSize:        int(maxBatchSize), // Fixed
-		BatchSize:           float32(batchSize),
-		AvgQueueTime:        float32(avgQueueTime),
-		AvgTokenTime:        float32(avgTokenTime),
-	}
+	// create environment with input parameters
+	env := core.NewEnvironmentDecode(float32(lambda), float32(batchSize), float32(avgQueueTime), int(maxBatchSize),
+		float32(avgTokens), float32(avgTokenTime))
 	return env
 }

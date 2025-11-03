@@ -6,33 +6,25 @@
     },
     "modelData": {
         "initState": [
-            10.0,
-            0.1,
-            40.0,
-            0.025
+            1.0,
+            0.01
         ],
         "percentChange": [
-            0.1,
-            0.1,
             0.1,
             0.1
         ],
         "boundedState": true,
         "minState": [
-            1.0,
-            0.01,
-            10.0,
+            0.1,
             0.001
         ],
         "maxState": [
-            40,
-            2.0,
-            200,
-            0.1
+            50,
+            2.0
         ],
         "expectedObservations": [
-            100.0,
-            20.0
+            200,
+            2
         ]
     }
 }

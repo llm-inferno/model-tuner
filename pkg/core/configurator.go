@@ -31,7 +31,7 @@ type Configurator struct {
 }
 
 func NewConfigurator(configData *config.ConfigData) (c *Configurator, err error) {
-	if !checkConfigData(configData) {
+	if !validConfigData(configData) {
 		return nil, fmt.Errorf("invalid config data")
 	}
 
@@ -43,7 +43,7 @@ func NewConfigurator(configData *config.ConfigData) (c *Configurator, err error)
 	m := len(md.ExpectedObservations)
 	obsCOV := make([]float64, m)
 	factor := math.Pow(fd.ErrorLevel/fd.TPercentile, 2) / fd.GammaFactor
-	for j := 0; j < m; j++ {
+	for j := range m {
 		obsCOV[j] = factor * math.Pow(md.ExpectedObservations[j], 2)
 	}
 	R := mat.DenseCopyOf(mat.NewDiagDense(m, obsCOV))
@@ -91,7 +91,7 @@ func (c *Configurator) NumObservations() int {
 	return c.nZ
 }
 
-func checkConfigData(cd *config.ConfigData) bool {
+func validConfigData(cd *config.ConfigData) bool {
 	if cd == nil {
 		return false
 	}

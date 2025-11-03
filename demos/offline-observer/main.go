@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/llm-inferno/model-tuner/pkg/core"
+	"github.com/llm-inferno/model-tuner/pkg/observer"
 	"github.com/llm-inferno/model-tuner/pkg/utils"
 )
 
@@ -20,22 +21,22 @@ type result struct {
 
 func main() {
 	prefix := "../../samples/"
-	envFilePath := prefix + "mb8-rpm6-a100.csv"
-	observer, err := core.NewOfflineObserver(envFilePath)
+	envFilePath := prefix + "tuner-exp13.csv"
+	observer, err := observer.NewOfflineObserver(envFilePath)
 	if err != nil {
 		fmt.Printf("Error in Observer creation: %s\n", err)
 	}
 
-	configData, err := utils.LoadConfigForServer("default")
+	configData, err := utils.LoadConfigForServer("decode")
 	if err != nil {
 		fmt.Printf("Error in loading config data: %s\n", err)
 	}
 
 	// create tuner by first getting the environment
 	env := observer.GetEnvironment()
-	tuner, err := core.NewTuner(configData, env)
+	tuner, _, err := core.SetupTunerForQueueingModel(configData, env, "decode")
 	if err != nil {
-		fmt.Printf("Error in creating the tuner: %s\n", err)
+		fmt.Println(err)
 		return
 	}
 	fmt.Println(tuner)
@@ -43,15 +44,14 @@ func main() {
 	var results []result
 	numSteps := 1000
 
-	for k := 0; k < numSteps; k++ {
-		env := observer.GetEnvironment()
+	for k := range numSteps {
+		env = observer.GetEnvironment()
 		if env == nil {
 			break
 		}
 		fmt.Println(env.String())
-		tuner.UpdateEnvironment(env)
 
-		if err := tuner.Run(); err != nil {
+		if err := tuner.Run(env); err != nil {
 			fmt.Println(err)
 			continue
 		}
