@@ -26,17 +26,19 @@ func getparams(c *gin.Context) {
 	}
 
 	stateVec := tuner.GetParams()
-	if stateVec == nil || stateVec.Len() < 2 {
+	if stateVec == nil || stateVec.Len() < 3 {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid state vector"})
 	}
 
 	alpha := stateVec.AtVec(0)
 	beta := stateVec.AtVec(1)
+	gamma := stateVec.AtVec(2)
 
 	c.JSON(http.StatusOK, gin.H{
 		"server_name": serverName,
 		"alpha":       alpha,
 		"beta":        beta,
+		"gamma":       gamma,
 	})
 
 }

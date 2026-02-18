@@ -44,10 +44,11 @@ func (o *OfflineObserver) GetEnvironment() core.Environment {
 	batchSize, _ := strconv.ParseFloat(row[2], 32)
 	maxBatchSize, _ := strconv.ParseFloat(row[3], 32)
 	avgQueueTime, _ := strconv.ParseFloat(row[4], 32)
-	avgTokenTime, _ := strconv.ParseFloat(row[5], 32)
+	avgITL, _ := strconv.ParseFloat(row[5], 32)
 
 	// create environment with input parameters
-	env := core.NewEnvironmentDecode(float32(lambda), float32(batchSize), float32(avgQueueTime), int(maxBatchSize),
-		float32(avgTokens), float32(avgTokenTime))
+	env := core.NewEnvironmentDecode(float32(lambda), float32(batchSize), float32(avgQueueTime),
+		int(maxBatchSize),
+		float32(avgTokens), float32(avgITL))
 	return env
 }

@@ -141,7 +141,7 @@ loop:
 			MaxBatchSize: envData.MaxBatchSize,
 			AvgBatchSize: envData.BatchSize,
 			AvgWait:      envData.AvgQueueTime,
-			AvgItl:       envData.AvgTokenDecodeTime,
+			AvgItl:       envData.AvgITL,
 			Alpha:        x[0],
 			Beta:         x[1],
 			DiffWait:     delta[0],

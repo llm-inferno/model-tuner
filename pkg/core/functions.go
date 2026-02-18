@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/llm-inferno/model-tuner/pkg/config"
 	"github.com/llm-inferno/queue-analysis/pkg/analyzer"
@@ -44,7 +43,7 @@ func NewQueueModelSystemFuncCreatorPrefillDecode(tuner *Tuner) *QueueModelSystem
 func (c *QueueModelSystemFuncCreatorPrefillDecode) Create() func(x *mat.VecDense) *mat.VecDense {
 	tuner := c.tuner
 	return func(x *mat.VecDense) *mat.VecDense {
-		if !tuner.env.Valid() || x.Len() != 4 {
+		if !tuner.env.Valid() || x.Len() != 3 {
 			return nil
 		}
 
@@ -56,27 +55,21 @@ func (c *QueueModelSystemFuncCreatorPrefillDecode) Create() func(x *mat.VecDense
 		alpha := float32(x.AtVec(0))
 		beta := float32(x.AtVec(1))
 		gamma := float32(x.AtVec(2))
-		delta := float32(x.AtVec(3))
 
 		// create queueing model
 		qConfig := &analyzer.Configuration{
 			MaxBatchSize: maxBatchSize,
 			MaxQueueSize: 10 * maxBatchSize,
 			ServiceParms: &analyzer.ServiceParms{
-				Prefill: &analyzer.PrefillParms{
-					Gamma: gamma,
-					Delta: delta,
-				},
-				Decode: &analyzer.DecodeParms{
-					Alpha: alpha,
-					Beta:  beta,
-				},
+				Alpha: alpha,
+				Beta:  beta,
+				Gamma: gamma,
 			},
 		}
 
 		requestSize := &analyzer.RequestSize{
-			AvgInputTokens:  int(math.Ceil(float64(avgInputTokens))),
-			AvgOutputTokens: int(math.Ceil(float64(avgOutputTokens))),
+			AvgInputTokens:  avgInputTokens,
+			AvgOutputTokens: avgOutputTokens,
 		}
 		queueAnalyzer, err := analyzer.NewLLMQueueAnalyzer(qConfig, requestSize)
 		if err != nil {
@@ -91,11 +84,10 @@ func (c *QueueModelSystemFuncCreatorPrefillDecode) Create() func(x *mat.VecDense
 		}
 
 		// get metrics from queue analyzer
-		// avgWaitTime := float64(metrics.AvgWaitTime)
-		avgPrefillTime := float64(metrics.AvgPrefillTime)
-		avgTokenDecodeTime := float64(metrics.AvgTokenTime)
+		avgTTFT := float64(metrics.AvgTTFT)
+		avgITL := float64(metrics.AvgTokenTime)
 
-		return mat.NewVecDense(2, []float64{avgPrefillTime, avgTokenDecodeTime})
+		return mat.NewVecDense(2, []float64{avgTTFT, avgITL})
 	}
 }
 
@@ -118,17 +110,14 @@ func (c *QueueModelSystemFuncCreatorDecode) Create() func(x *mat.VecDense) *mat.
 			MaxBatchSize: maxBatchSize,
 			MaxQueueSize: 10 * maxBatchSize,
 			ServiceParms: &analyzer.ServiceParms{
-				Prefill: &analyzer.PrefillParms{},
-				Decode: &analyzer.DecodeParms{
-					Alpha: alpha,
-					Beta:  beta,
-				},
+				Alpha: alpha,
+				Beta:  beta,
 			},
 		}
 
 		requestSize := &analyzer.RequestSize{
 			AvgInputTokens:  0,
-			AvgOutputTokens: int(math.Ceil(float64(avgOutputTokens))),
+			AvgOutputTokens: avgOutputTokens,
 		}
 		queueAnalyzer, err := analyzer.NewLLMQueueAnalyzer(qConfig, requestSize)
 		if err != nil {
@@ -144,9 +133,9 @@ func (c *QueueModelSystemFuncCreatorDecode) Create() func(x *mat.VecDense) *mat.
 
 		// get metrics from queue analyzer
 		avgWaitTime := float64(metrics.AvgWaitTime)
-		avgTokenDecodeTime := float64(metrics.AvgTokenTime)
+		avgITL := float64(metrics.AvgTokenTime)
 
-		return mat.NewVecDense(2, []float64{avgWaitTime, avgTokenDecodeTime})
+		return mat.NewVecDense(2, []float64{avgWaitTime, avgITL})
 	}
 }
 
