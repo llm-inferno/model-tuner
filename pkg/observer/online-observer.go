@@ -44,7 +44,7 @@ func (obs *OnlineObserver) GetEnvironment() core.Environment {
 		"AvgOutputTokens": fmt.Sprintf(`sum(rate(vllm:generation_tokens_total{namespace="%s", model_name=~".*%s.*"}[%s])) / sum(rate(vllm:request_success_total{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration, namespace, modelName, duration),
 		"batchSize":       fmt.Sprintf(`avg(avg_over_time(vllm:num_requests_running{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration),
 		"avgWaitTime":     fmt.Sprintf(`sum(rate(vllm:request_queue_time_seconds_sum{namespace="%s", model_name=~".*%s.*"}[%s])) / sum(rate(vllm:request_queue_time_seconds_count{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration, namespace, modelName, duration),
-		"avgTokenTime":    fmt.Sprintf(`sum(rate(vllm:time_per_output_token_seconds_sum{namespace="%s", model_name=~".*%s.*"}[%s])) / sum(rate(vllm:time_per_output_token_seconds_count{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration, namespace, modelName, duration),
+		"avgITL":          fmt.Sprintf(`sum(rate(vllm:time_per_output_token_seconds_sum{namespace="%s", model_name=~".*%s.*"}[%s])) / sum(rate(vllm:time_per_output_token_seconds_count{namespace="%s", model_name=~".*%s.*"}[%s]))`, namespace, modelName, duration, namespace, modelName, duration),
 	}
 
 	results := make(map[string]float64)
@@ -59,7 +59,7 @@ func (obs *OnlineObserver) GetEnvironment() core.Environment {
 
 	// create environment with input parameters
 	env := core.NewEnvironmentDecode(float32(results["rpm"])*60, float32(results["batchSize"]), float32(results["avgWaitTime"])*1000, 8,
-		float32(results["AvgOutputTokens"]), float32(results["avgTokenTime"])*1000)
+		float32(results["AvgOutputTokens"]), float32(results["avgITL"])*1000)
 	return env
 }
 

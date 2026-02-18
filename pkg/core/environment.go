@@ -17,16 +17,16 @@ type EnvironmentBase struct {
 
 type EnvironmentDecode struct {
 	EnvironmentBase
-	AvgOutputTokens    float32 // average number of output tokens per request
-	AvgTokenDecodeTime float32 // average inter token latency (msec)
+	AvgOutputTokens float32 // average number of output tokens per request
+	AvgITL          float32 // average inter token latency (msec)
 }
 
 type EnvironmentPrefillDecode struct {
 	EnvironmentBase
-	AvgInputTokens     float32 // average number of input tokens per request
-	AvgOutputTokens    float32 // average number of output tokens per request
-	AvgPrefillTime     float32 // average prefill time (msec)
-	AvgTokenDecodeTime float32 // average inter token latency (msec)
+	AvgInputTokens  float32 // average number of input tokens per request
+	AvgOutputTokens float32 // average number of output tokens per request
+	AvgTTFT         float32 // average time to first token (msec)
+	AvgITL          float32 // average inter token latency (msec)
 }
 
 type Environment interface {
@@ -45,22 +45,22 @@ func NewEnvironmentBase(lambda, batchSize, avgQueueTime float32, maxBatchSize in
 }
 
 func NewEnvironmentDecode(lambda, batchSize, avgQueueTime float32, maxBatchSize int,
-	avgOutputTokens, avgTokenDecodeTime float32) *EnvironmentDecode {
+	avgOutputTokens, avgITL float32) *EnvironmentDecode {
 	return &EnvironmentDecode{
-		EnvironmentBase:    *NewEnvironmentBase(lambda, batchSize, avgQueueTime, maxBatchSize),
-		AvgOutputTokens:    avgOutputTokens,
-		AvgTokenDecodeTime: avgTokenDecodeTime,
+		EnvironmentBase: *NewEnvironmentBase(lambda, batchSize, avgQueueTime, maxBatchSize),
+		AvgOutputTokens: avgOutputTokens,
+		AvgITL:          avgITL,
 	}
 }
 
 func NewEnvironmentPrefillDecode(lambda, batchSize, avgQueueTime float32, maxBatchSize int,
-	avgInputTokens, avgOutputTokens, avgPrefillTime, avgTokenDecodeTime float32) *EnvironmentPrefillDecode {
+	avgInputTokens, avgOutputTokens, avgTTFT, avgITL float32) *EnvironmentPrefillDecode {
 	return &EnvironmentPrefillDecode{
-		EnvironmentBase:    *NewEnvironmentBase(lambda, batchSize, avgQueueTime, maxBatchSize),
-		AvgInputTokens:     avgInputTokens,
-		AvgOutputTokens:    avgOutputTokens,
-		AvgPrefillTime:     avgPrefillTime,
-		AvgTokenDecodeTime: avgTokenDecodeTime,
+		EnvironmentBase: *NewEnvironmentBase(lambda, batchSize, avgQueueTime, maxBatchSize),
+		AvgInputTokens:  avgInputTokens,
+		AvgOutputTokens: avgOutputTokens,
+		AvgTTFT:         avgTTFT,
+		AvgITL:          avgITL,
 	}
 }
 
@@ -69,35 +69,35 @@ func (e *EnvironmentBase) Valid() bool {
 }
 
 func (e *EnvironmentDecode) Valid() bool {
-	return e.EnvironmentBase.Valid() && e.AvgOutputTokens > 0 && e.AvgTokenDecodeTime > 0
+	return e.EnvironmentBase.Valid() && e.AvgOutputTokens > 0 && e.AvgITL > 0
 }
 
 func (e *EnvironmentPrefillDecode) Valid() bool {
 	return e.EnvironmentBase.Valid() && e.AvgInputTokens >= 0 && e.AvgOutputTokens > 0 &&
-		e.AvgPrefillTime >= 0 && e.AvgTokenDecodeTime > 0
+		e.AvgTTFT >= 0 && e.AvgITL > 0
 }
 
 func (e *EnvironmentDecode) GetObservations() *mat.VecDense {
-	return mat.NewVecDense(2, []float64{float64(e.AvgQueueTime), float64(e.AvgTokenDecodeTime)})
+	return mat.NewVecDense(2, []float64{float64(e.AvgQueueTime), float64(e.AvgITL)})
 }
 
 func (e *EnvironmentPrefillDecode) GetObservations() *mat.VecDense {
-	return mat.NewVecDense(2, []float64{float64(e.AvgPrefillTime), float64(e.AvgTokenDecodeTime)})
+	return mat.NewVecDense(2, []float64{float64(e.AvgTTFT), float64(e.AvgITL)})
 }
 
 func (e *EnvironmentDecode) String() string {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "Environment: ")
 	fmt.Fprintf(&b, "rpm=%5.2f; avgOutTokens=%6.2f; batchSize=%6.2f; maxBatch=%d; avgWait=%10.6f; avgITL=%10.6f",
-		e.Lambda, e.AvgOutputTokens, e.BatchSize, e.MaxBatchSize, e.AvgQueueTime, e.AvgTokenDecodeTime)
+		e.Lambda, e.AvgOutputTokens, e.BatchSize, e.MaxBatchSize, e.AvgQueueTime, e.AvgITL)
 	return b.String()
 }
 
 func (e *EnvironmentPrefillDecode) String() string {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "Environment: ")
-	fmt.Fprintf(&b, "rpm=%5.2f; avgInTokens=%6.2f; avgOutTokens=%6.2f; batchSize=%6.2f; maxBatch=%d; avgWait=%10.6f; avgPrefill=%10.6f; avgITL=%10.6f",
+	fmt.Fprintf(&b, "rpm=%5.2f; avgInTokens=%6.2f; avgOutTokens=%6.2f; batchSize=%6.2f; maxBatch=%d; avgWait=%10.6f; avgTTFT=%10.6f; avgITL=%10.6f",
 		e.Lambda, e.AvgInputTokens, e.AvgOutputTokens, e.BatchSize, e.MaxBatchSize,
-		e.AvgQueueTime, e.AvgPrefillTime, e.AvgTokenDecodeTime)
+		e.AvgQueueTime, e.AvgTTFT, e.AvgITL)
 	return b.String()
 }

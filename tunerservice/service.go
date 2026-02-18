@@ -57,7 +57,7 @@ func (ts *TunerService) UpdateTunersAndRun() error {
 			if err != nil {
 				return fmt.Errorf("error creating tuner for %s: %v", serverName, err)
 			}
-			observationFunc := core.NewQueueModelSystemFuncCreatorDecode(tuner)
+			observationFunc := core.NewQueueModelSystemFuncCreatorPrefillDecode(tuner)
 			if err = tuner.SetObservationFunc(observationFunc); err != nil {
 				return fmt.Errorf("error setting tuner system functionfor %s: %v", serverName, err)
 			}

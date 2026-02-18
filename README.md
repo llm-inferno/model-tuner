@@ -50,19 +50,20 @@ It also leverages the `Inferno`'s  collector as the observer to gather real-time
 
 ### Features
 
-* REST API Endpoint: `GET /getparams?server_name=<name>` returns the tuned parameters (`alpha` and `beta`) for a specific server.
+* REST API Endpoint: `GET /getparams?server_name=<name>` returns the tuned parameters (`alpha`, `beta`, and `gamma`) for a specific server.
 Responds with:
 
 ```json
   "server_name": "your-server",
   "alpha": 0.14,
-  "beta": 0.08
+  "beta": 0.08,
+  "gamma": 0.00002,
 ```
 
 * Periodic Tuning Loop: If configured with a tuning period, the service runs a background loop that:
 
   * Periodically collects environment metrics via the `\getenv` API call to `Inferno`'s collector.
-  * Updates each server's model parameters `alpha` and `beta` based on the environment obtained from collector.
+  * Updates each server's model parameters `alpha`, `beta`, and `gamma` based on the environment obtained from collector.
 
 ### Configuration
 

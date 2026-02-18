@@ -58,6 +58,7 @@ func (t *Tuner) SetObservationFunc(systemFuncCreator SystemFuncCreator) error {
 	if obsFunc == nil {
 		return fmt.Errorf("observation function is nil")
 	}
+
 	if err := t.filter.SethH(obsFunc); err != nil {
 		return err
 	}

@@ -5,7 +5,7 @@ Simulated Observer simulates randomness in wait and token time
 package observer
 
 import (
-	"math"
+	"fmt"
 	"math/rand/v2"
 
 	"github.com/llm-inferno/model-tuner/pkg/core"
@@ -15,13 +15,11 @@ import (
 type SimulatedObserver struct {
 	BaseObserver
 
-	rpm          []float32
-	inputTokens  []float32
-	outputTokens []float32
-	alpha, beta  []float32
-	gamma, delta []float32
-	percentNoise []float32
-	maxBatchSize []int
+	rpm                       []float32
+	inputTokens, outputTokens []float32
+	alpha, beta, gamma        []float32
+	percentNoise              []float32
+	maxBatchSize              []int
 
 	timeStep int
 	maxStep  int
@@ -29,11 +27,11 @@ type SimulatedObserver struct {
 
 func NewSimulatedObserver(rpm,
 	inputTokens, outputTokens,
-	alpha, beta, gamma, delta,
-	percentNoise []float32, maxBatchSize []int) *SimulatedObserver {
+	alpha, beta, gamma, percentNoise []float32,
+	maxBatchSize []int) *SimulatedObserver {
 
 	maxStep := max(len(rpm), len(inputTokens), len(outputTokens),
-		len(alpha), len(beta), len(gamma), len(delta),
+		len(alpha), len(beta), len(gamma),
 		len(percentNoise), len(maxBatchSize)) - 1
 	if maxStep < 0 {
 		return nil
@@ -47,7 +45,6 @@ func NewSimulatedObserver(rpm,
 		alpha:        alpha,
 		beta:         beta,
 		gamma:        gamma,
-		delta:        delta,
 		maxBatchSize: maxBatchSize,
 		percentNoise: percentNoise,
 		timeStep:     0,
@@ -65,7 +62,6 @@ func (obs *SimulatedObserver) GetEnvironment() core.Environment {
 	alpha := obs.alpha[i]
 	beta := obs.beta[i]
 	gamma := obs.gamma[i]
-	delta := obs.delta[i]
 	pctNoise := obs.percentNoise[i]
 	maxBatchSize := obs.maxBatchSize[i]
 
@@ -74,23 +70,19 @@ func (obs *SimulatedObserver) GetEnvironment() core.Environment {
 		MaxBatchSize: maxBatchSize,
 		MaxQueueSize: 10 * maxBatchSize,
 		ServiceParms: &analyzer.ServiceParms{
-			Prefill: &analyzer.PrefillParms{
-				Gamma: gamma,
-				Delta: delta,
-			},
-			Decode: &analyzer.DecodeParms{
-				Alpha: alpha,
-				Beta:  beta,
-			},
+			Alpha: alpha,
+			Beta:  beta,
+			Gamma: gamma,
 		},
 	}
 
 	requestSize := &analyzer.RequestSize{
-		AvgInputTokens:  int(math.Ceil(float64(inputTokens))),
-		AvgOutputTokens: int(math.Ceil(float64(outputTokens))),
+		AvgInputTokens:  inputTokens,
+		AvgOutputTokens: outputTokens,
 	}
 	queueAnalyzer, err := analyzer.NewLLMQueueAnalyzer(qConfig, requestSize)
 	if err != nil {
+		fmt.Println("failed to create queue analyzer: " + err.Error())
 		return nil
 	}
 
@@ -102,6 +94,7 @@ func (obs *SimulatedObserver) GetEnvironment() core.Environment {
 
 	metrics, err := queueAnalyzer.Analyze(rpm / 60)
 	if err != nil {
+		fmt.Println("failed to analyze queueing model: " + err.Error())
 		return nil
 	}
 
@@ -109,8 +102,8 @@ func (obs *SimulatedObserver) GetEnvironment() core.Environment {
 	// fmt.Println("sim-metrics: " + metrics.String())
 
 	avgWaitTime := metrics.AvgWaitTime
-	avgPrefillTime := metrics.AvgPrefillTime
-	avgTokenDecodeTime := metrics.AvgTokenTime
+	avgTTFT := metrics.AvgTTFT
+	avgITL := metrics.AvgTokenTime
 
 	avgConcurrency := metrics.AvgNumInServ
 
@@ -118,17 +111,17 @@ func (obs *SimulatedObserver) GetEnvironment() core.Environment {
 	if avgWaitTime *= 1 + pctNoise*(2*rand.Float32()-1); avgWaitTime < 0 {
 		avgWaitTime = 0
 	}
-	if avgPrefillTime *= 1 + pctNoise*(2*rand.Float32()-1); avgPrefillTime < 0 {
-		avgPrefillTime = 0
+	if avgTTFT *= 1 + pctNoise*(2*rand.Float32()-1); avgTTFT < 0 {
+		avgTTFT = 0
 	}
-	if avgTokenDecodeTime *= 1 + pctNoise*(2*rand.Float32()-1); avgTokenDecodeTime < 0 {
-		avgTokenDecodeTime = 0
+	if avgITL *= 1 + pctNoise*(2*rand.Float32()-1); avgITL < 0 {
+		avgITL = 0
 	}
 
 	obs.timeStep++
 
 	// create environment with input parameters
 	env := core.NewEnvironmentPrefillDecode(rpm, avgConcurrency, avgWaitTime, maxBatchSize,
-		inputTokens, outputTokens, avgPrefillTime, avgTokenDecodeTime)
+		inputTokens, outputTokens, avgTTFT, avgITL)
 	return env
 }

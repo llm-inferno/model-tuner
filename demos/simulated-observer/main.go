@@ -28,48 +28,44 @@ func main() {
 	alpha := make([]float32, total)
 	beta := make([]float32, total)
 	gamma := make([]float32, total)
-	delta := make([]float32, total)
 	percentNoise := make([]float32, total)
 	maxBatchSize := make([]int, total)
 
 	// phase 1
 	for i := range phase1 {
-		rpm[i] = float32(120)
-		maxBatchSize[i] = 96
-		inputTokens[i] = float32(128)
+		rpm[i] = float32(16)
+		maxBatchSize[i] = 128
+		inputTokens[i] = float32(2048)
 		outputTokens[i] = float32(512)
-		alpha[i] = float32(18)
-		beta[i] = float32(0.4)
-		gamma[i] = float32(56)
-		delta[i] = float32(0.01)
-		percentNoise[i] = float32(0.01)
+		alpha[i] = float32(16)
+		beta[i] = float32(0.04)
+		gamma[i] = float32(0.0002)
+		percentNoise[i] = float32(0.05)
 	}
 	// phase 2
 	for i := phase1; i < phase1+phase2; i++ {
-		rpm[i] = float32(60)
-		maxBatchSize[i] = 96
-		inputTokens[i] = float32(128)
-		outputTokens[i] = float32(512)
-		alpha[i] = float32(24)
-		beta[i] = float32(0.8)
-		gamma[i] = float32(72)
-		delta[i] = float32(0.02)
-		percentNoise[i] = float32(0.01)
+		rpm[i] = float32(8)
+		maxBatchSize[i] = 128
+		inputTokens[i] = float32(2048)
+		outputTokens[i] = float32(2048)
+		alpha[i] = float32(20)
+		beta[i] = float32(0.08)
+		gamma[i] = float32(0.0004)
+		percentNoise[i] = float32(0.05)
 	}
 	// phase 3
 	for i := phase1 + phase2; i < phase1+phase2+phase3; i++ {
-		rpm[i] = float32(120)
-		maxBatchSize[i] = 96
-		inputTokens[i] = float32(128)
-		outputTokens[i] = float32(512)
-		alpha[i] = float32(18)
-		beta[i] = float32(0.4)
-		gamma[i] = float32(56)
-		delta[i] = float32(0.01)
-		percentNoise[i] = float32(0.01)
+		rpm[i] = float32(6)
+		maxBatchSize[i] = 128
+		inputTokens[i] = float32(1024)
+		outputTokens[i] = float32(2048)
+		alpha[i] = float32(16)
+		beta[i] = float32(0.04)
+		gamma[i] = float32(0.0006)
+		percentNoise[i] = float32(0.05)
 	}
 
-	observer := observer.NewSimulatedObserver(rpm, inputTokens, outputTokens, alpha, beta, gamma, delta, percentNoise, maxBatchSize)
+	observer := observer.NewSimulatedObserver(rpm, inputTokens, outputTokens, alpha, beta, gamma, percentNoise, maxBatchSize)
 	if observer == nil {
 		fmt.Println("invalid parameters for observer")
 	}
@@ -78,6 +74,7 @@ func main() {
 	env := observer.GetEnvironment()
 	tuner, _, err := core.SetupTunerForQueueingModel(configData, env, "prefill-decode")
 	if err != nil {
+		fmt.Println("error setting up tuner:")
 		fmt.Println(err)
 		return
 	}
