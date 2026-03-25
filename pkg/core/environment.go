@@ -8,7 +8,7 @@ import (
 )
 
 // representation of the environment in which the system operates
-type EnvironmentBase struct {
+type environmentBase struct {
 	Lambda       float32 // request arrival rate (per minute)
 	BatchSize    float32 // batch size
 	AvgQueueTime float32 // average request queueing time (msec)
@@ -16,13 +16,13 @@ type EnvironmentBase struct {
 }
 
 type EnvironmentDecode struct {
-	EnvironmentBase
+	environmentBase
 	AvgOutputTokens float32 // average number of output tokens per request
 	AvgITL          float32 // average inter token latency (msec)
 }
 
 type EnvironmentPrefillDecode struct {
-	EnvironmentBase
+	environmentBase
 	AvgInputTokens  float32 // average number of input tokens per request
 	AvgOutputTokens float32 // average number of output tokens per request
 	AvgTTFT         float32 // average time to first token (msec)
@@ -35,8 +35,8 @@ type Environment interface {
 	String() string                 // string representation of the environment
 }
 
-func NewEnvironmentBase(lambda, batchSize, avgQueueTime float32, maxBatchSize int) *EnvironmentBase {
-	return &EnvironmentBase{
+func newEnvironmentBase(lambda, batchSize, avgQueueTime float32, maxBatchSize int) environmentBase {
+	return environmentBase{
 		Lambda:       lambda,
 		BatchSize:    batchSize,
 		AvgQueueTime: avgQueueTime,
@@ -47,7 +47,7 @@ func NewEnvironmentBase(lambda, batchSize, avgQueueTime float32, maxBatchSize in
 func NewEnvironmentDecode(lambda, batchSize, avgQueueTime float32, maxBatchSize int,
 	avgOutputTokens, avgITL float32) *EnvironmentDecode {
 	return &EnvironmentDecode{
-		EnvironmentBase: *NewEnvironmentBase(lambda, batchSize, avgQueueTime, maxBatchSize),
+		environmentBase: newEnvironmentBase(lambda, batchSize, avgQueueTime, maxBatchSize),
 		AvgOutputTokens: avgOutputTokens,
 		AvgITL:          avgITL,
 	}
@@ -56,7 +56,7 @@ func NewEnvironmentDecode(lambda, batchSize, avgQueueTime float32, maxBatchSize 
 func NewEnvironmentPrefillDecode(lambda, batchSize, avgQueueTime float32, maxBatchSize int,
 	avgInputTokens, avgOutputTokens, avgTTFT, avgITL float32) *EnvironmentPrefillDecode {
 	return &EnvironmentPrefillDecode{
-		EnvironmentBase: *NewEnvironmentBase(lambda, batchSize, avgQueueTime, maxBatchSize),
+		environmentBase: newEnvironmentBase(lambda, batchSize, avgQueueTime, maxBatchSize),
 		AvgInputTokens:  avgInputTokens,
 		AvgOutputTokens: avgOutputTokens,
 		AvgTTFT:         avgTTFT,
@@ -64,16 +64,16 @@ func NewEnvironmentPrefillDecode(lambda, batchSize, avgQueueTime float32, maxBat
 	}
 }
 
-func (e *EnvironmentBase) Valid() bool {
+func (e *environmentBase) Valid() bool {
 	return e.Lambda > 0 && e.BatchSize >= 0 && e.AvgQueueTime >= 0 && e.MaxBatchSize > 0
 }
 
 func (e *EnvironmentDecode) Valid() bool {
-	return e.EnvironmentBase.Valid() && e.AvgOutputTokens > 0 && e.AvgITL > 0
+	return e.environmentBase.Valid() && e.AvgOutputTokens > 0 && e.AvgITL > 0
 }
 
 func (e *EnvironmentPrefillDecode) Valid() bool {
-	return e.EnvironmentBase.Valid() && e.AvgInputTokens >= 0 && e.AvgOutputTokens > 0 &&
+	return e.environmentBase.Valid() && e.AvgInputTokens >= 0 && e.AvgOutputTokens > 0 &&
 		e.AvgTTFT >= 0 && e.AvgITL > 0
 }
 

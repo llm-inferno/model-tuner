@@ -12,7 +12,7 @@ The user would also need to provide a config file to initialize the tuner.
 
 ## Observers
 
-The Tuner can use three different observers — Simulated, Offline, and Online Observer.
+The Tuner can use four different observers — Simulated, Offline, Online, and Data Observer.
 
 ### Simulated Observer
 

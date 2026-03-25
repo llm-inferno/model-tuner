@@ -47,7 +47,10 @@ func (c *QueueModelSystemFuncCreatorPrefillDecode) Create() func(x *mat.VecDense
 			return nil
 		}
 
-		envData := tuner.env.(*EnvironmentPrefillDecode)
+		envData, ok := tuner.env.(*EnvironmentPrefillDecode)
+		if !ok {
+			return nil
+		}
 		maxBatchSize := envData.MaxBatchSize
 		avgInputTokens := envData.AvgInputTokens
 		avgOutputTokens := envData.AvgOutputTokens
@@ -98,7 +101,10 @@ func (c *QueueModelSystemFuncCreatorDecode) Create() func(x *mat.VecDense) *mat.
 			return nil
 		}
 
-		envData := tuner.env.(*EnvironmentDecode)
+		envData, ok := tuner.env.(*EnvironmentDecode)
+		if !ok {
+			return nil
+		}
 		maxBatchSize := envData.MaxBatchSize
 		avgOutputTokens := envData.AvgOutputTokens
 
