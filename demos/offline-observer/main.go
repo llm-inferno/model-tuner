@@ -20,8 +20,11 @@ type result struct {
 }
 
 func main() {
-	prefix := "../../samples/"
-	envFilePath := prefix + "tuner-exp13.csv"
+	samplesDir := os.Getenv("CONFIG_DATA_DIR")
+	if samplesDir == "" {
+		samplesDir = "samples"
+	}
+	envFilePath := samplesDir + "/tuner-exp13.csv"
 	observer, err := observer.NewOfflineObserver(envFilePath)
 	if err != nil {
 		fmt.Printf("Error in Observer creation: %s\n", err)

@@ -66,7 +66,7 @@ Key `ModelData` fields: `initState` ([alpha, beta, gamma] initial values), `boun
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `CONFIG_DATA_DIR` | Directory with JSON config files | `../../samples` |
+| `CONFIG_DATA_DIR` | Directory with JSON config files | `samples` |
 | `TUNER_HOST` / `TUNER_PORT` | Tuner REST server address | `localhost:8080` |
 | `COLLECTOR_HOST` / `COLLECTOR_PORT` | Prometheus collector address | — |
 | `TOKEN` | Bearer token for Prometheus | — |
