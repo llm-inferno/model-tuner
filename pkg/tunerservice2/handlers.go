@@ -23,7 +23,7 @@ func (ts *TunerServer) handleTune(c *gin.Context) {
 
 	modelData, err := ts.service.Tune(replicaSpecs)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, modelData)

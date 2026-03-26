@@ -25,6 +25,6 @@ go.work.sum
 .DS_Store
 ~*
 
-# Built demo binaries
-tunerservice
-tunerservice2
+# Built demo binaries (root-anchored to avoid matching packages/dirs of same name)
+/tunerservice
+/tunerservice2

@@ -27,8 +27,12 @@ func NewTunerService() *TunerService {
 
 // Tune accepts per-replica ServerSpecs from the control-loop Collector, runs EKF tuning for each
 // (model, accelerator) group, and returns updated ModelData with tuned alpha/beta/gamma.
+// Returns an error if no parameters could be produced (all replicas idle or all groups failed).
 func (ts *TunerService) Tune(replicaSpecs []optconfig.ServerSpec) (*optconfig.ModelData, error) {
 	groups := groupByModelAccelerator(replicaSpecs)
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("no replicas with active traffic in request")
+	}
 
 	for key, replicas := range groups {
 		model, accelerator := splitKey(key)
@@ -37,7 +41,11 @@ func (ts *TunerService) Tune(replicaSpecs []optconfig.ServerSpec) (*optconfig.Mo
 		}
 	}
 
-	return ts.buildModelData(groups), nil
+	modelData := ts.buildModelData(groups)
+	if len(modelData.PerfData) == 0 {
+		return nil, fmt.Errorf("tuning produced no results for any model/accelerator group")
+	}
+	return modelData, nil
 }
 
 // tuneGroup runs EKF tuning for all replicas in a single (model, accelerator) group.
@@ -60,7 +68,7 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 			continue
 		}
 		if results.ValidationFailed {
-			slog.Debug("EKF update rejected (NIS)", "model", model, "accelerator", accelerator, "NIS", results.NIS)
+			slog.Debug("EKF update rejected", "model", model, "accelerator", accelerator, "NIS", results.NIS)
 		}
 		lastResults = results
 	}
@@ -69,11 +77,22 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 		return fmt.Errorf("no valid results for %s/%s", model, accelerator)
 	}
 
+	// Preserve the previously stored NIS when the last update was rolled back, so the
+	// stored NIS always reflects a valid (accepted) filter update, not a rejected outlier.
+	nisToStore := lastResults.NIS
+	if lastResults.ValidationFailed {
+		if prev := ts.paramStore.Get(model, accelerator); prev != nil {
+			nisToStore = prev.NIS
+		} else {
+			nisToStore = 0
+		}
+	}
+
 	ts.paramStore.Set(model, accelerator, &LearnedParameters{
 		Alpha:       lastResults.ServiceParms.Alpha,
 		Beta:        lastResults.ServiceParms.Beta,
 		Gamma:       lastResults.ServiceParms.Gamma,
-		NIS:         lastResults.NIS,
+		NIS:         nisToStore,
 		Covariance:  covToSlice(lastResults.Covariance),
 		LastUpdated: time.Now(),
 	})

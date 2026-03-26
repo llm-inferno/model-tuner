@@ -28,10 +28,10 @@ func main() {
 	service := tunerservice2.NewTunerService()
 	server := tunerservice2.NewTunerServer(service)
 
-	// Run server in background and send a test request after a short delay.
+	// Run test requests in background once the server is ready.
 	go func() {
-		time.Sleep(500 * time.Millisecond)
 		baseURL := fmt.Sprintf("http://%s:%s", host, port)
+		waitForServer(baseURL)
 		testTune(baseURL)
 		testGetParams(baseURL, "llama3-8b", "A100")
 	}()
@@ -40,6 +40,21 @@ func main() {
 	if err := server.Run(host, port); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
+}
+
+// waitForServer polls GET /getparams until the server responds, with exponential backoff.
+func waitForServer(baseURL string) {
+	delay := 50 * time.Millisecond
+	for range 10 {
+		resp, err := http.Get(baseURL + "/getparams?model=probe&accelerator=probe")
+		if err == nil {
+			_ = resp.Body.Close()
+			return
+		}
+		time.Sleep(delay)
+		delay *= 2
+	}
+	slog.Warn("server did not respond in time; proceeding anyway")
 }
 
 // testTune posts synthetic ReplicaSpecs and prints the returned ModelData.

@@ -59,9 +59,9 @@ func buildEnvironments(replicas []optconfig.ServerSpec) []*core.EnvironmentPrefi
 			a.TTFTAverage,
 			a.ITLAverage,
 		)
-		if env.Valid() {
-			envs = append(envs, env)
-		}
+		// env.Valid() is always true here: ArrivalRate > 0 (filtered by caller),
+		// tokens > 0, latency > 0, and maxBatch > 0 are all checked above.
+		envs = append(envs, env)
 	}
 	return envs
 }
@@ -107,17 +107,17 @@ func guessInitState(env *core.EnvironmentPrefillDecode) []float64 {
 
 // maxBatchFromReplicas returns the largest MaxBatchSize seen across replicas.
 func maxBatchFromReplicas(replicas []optconfig.ServerSpec) int {
-	max := 0
+	result := 0
 	for _, r := range replicas {
 		b := r.MaxBatchSize
 		if b <= 0 {
 			b = r.CurrentAlloc.MaxBatch
 		}
-		if b > max {
-			max = b
+		if b > result {
+			result = b
 		}
 	}
-	return max
+	return result
 }
 
 // validateKey is used in handler input validation.

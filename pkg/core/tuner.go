@@ -28,45 +28,13 @@ type Tuner struct {
 	env          Environment
 }
 
-func NewTuner(configData *config.ConfigData, env Environment) (tuner *Tuner, err error) {
-	var c *Configurator
-	var f *kalman.ExtendedKalmanFilter
-
-	// create configurator
-	if c, err = NewConfigurator(configData); err != nil {
-		return nil, err
-	}
-
-	//create filter
-	f, err = kalman.NewExtendedKalmanFilter(c.NumStates(), c.NumObservations(), c.X0, c.P)
-	if err != nil {
-		return nil, err
-	}
-	if err = f.SetQ(c.Q); err != nil {
-		return nil, err
-	}
-	if err = f.SetR(c.R); err != nil {
-		return nil, err
-	}
-	if err = f.SetfF(c.fFunc); err != nil {
-		return nil, err
-	}
-	if c.Xbounded {
-		if err = f.SetStateLimiter(c.Xmin, c.Xmax); err != nil {
-			return nil, err
-		}
-	}
-
-	// create tuner
-	return &Tuner{
-		configurator: c,
-		filter:       f,
-		env:          env,
-	}, nil
+func NewTuner(configData *config.ConfigData, env Environment) (*Tuner, error) {
+	return NewTunerWithCovariance(configData, env, nil)
 }
 
 // NewTunerWithCovariance creates a Tuner restoring a previously saved covariance matrix.
 // This provides state continuity across tuning cycles.
+// If covariance is nil, the initial P is computed from InitState (same as NewTuner).
 func NewTunerWithCovariance(configData *config.ConfigData, env Environment, covariance *mat.Dense) (tuner *Tuner, err error) {
 	var c *Configurator
 	var f *kalman.ExtendedKalmanFilter
@@ -183,6 +151,18 @@ func (t *Tuner) RunWithValidation(env Environment) (*TunedResults, error) {
 		return nil, fmt.Errorf("failed to update filter: %w", err)
 	}
 
+	if err := t.validateState(); err != nil {
+		if uerr := stasher.UnStash(); uerr != nil {
+			return nil, fmt.Errorf("failed to unstash after state validation failure: %w", uerr)
+		}
+		prev, eerr := t.extractTunedResults()
+		if eerr != nil {
+			return nil, fmt.Errorf("state validation failed and previous state extraction failed: %w", eerr)
+		}
+		prev.ValidationFailed = true
+		return prev, nil
+	}
+
 	nis, valErr := t.computeNIS()
 	if valErr != nil {
 		if err := stasher.UnStash(); err != nil {
@@ -207,7 +187,10 @@ func (t *Tuner) RunWithValidation(env Environment) (*TunedResults, error) {
 
 func (t *Tuner) extractTunedResults() (*TunedResults, error) {
 	x := t.filter.State()
-	if x == nil || x.Len() < 3 {
+	if x == nil {
+		return nil, fmt.Errorf("state vector is nil")
+	}
+	if x.Len() < 3 {
 		return nil, fmt.Errorf("state vector too short (len=%d, need 3)", x.Len())
 	}
 	return &TunedResults{
@@ -221,23 +204,27 @@ func (t *Tuner) extractTunedResults() (*TunedResults, error) {
 	}, nil
 }
 
-// computeNIS validates the EKF update result using Normalized Innovation Squared.
-// Returns (NIS, nil) on success, (NIS, error) if validation fails.
-func (t *Tuner) computeNIS() (float64, error) {
+// validateState checks that all queueing model parameters (alpha, beta, gamma) are positive
+// after an EKF update. This is a separate concern from NIS — it catches sign flips that
+// would make the queueing model nonsensical regardless of the innovation magnitude.
+func (t *Tuner) validateState() error {
 	x := t.filter.State()
 	if x == nil {
-		return -1, fmt.Errorf("nil state vector")
+		return fmt.Errorf("nil state vector")
 	}
-	if x.Len() >= 1 && x.AtVec(0) <= 0 {
-		return -1, fmt.Errorf("alpha must be positive: %f", x.AtVec(0))
+	names := []string{"alpha", "beta", "gamma"}
+	for i := range min(x.Len(), 3) {
+		if x.AtVec(i) <= 0 {
+			return fmt.Errorf("%s must be positive: %f", names[i], x.AtVec(i))
+		}
 	}
-	if x.Len() >= 2 && x.AtVec(1) <= 0 {
-		return -1, fmt.Errorf("beta must be positive: %f", x.AtVec(1))
-	}
-	if x.Len() >= 3 && x.AtVec(2) <= 0 {
-		return -1, fmt.Errorf("gamma must be positive: %f", x.AtVec(2))
-	}
+	return nil
+}
 
+// computeNIS computes the Normalized Innovation Squared and returns an error if it
+// exceeds the chi-squared threshold (7.378 for 2 DOF at 97.5%).
+// Returns (NIS, nil) on success, (NIS, error) if the threshold is exceeded.
+func (t *Tuner) computeNIS() (float64, error) {
 	y := mat.VecDenseCopyOf(t.filter.Innovation())
 	S := mat.DenseCopyOf(t.filter.InnovationCov())
 

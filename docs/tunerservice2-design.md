@@ -229,6 +229,4 @@ printing the returned `ModelData` and then querying `/getparams`.
 | `github.com/gin-gonic/gin` | HTTP server |
 | `gonum.org/v1/gonum/mat` | Matrix operations for NIS, covariance, state vectors |
 
-`optimizer-light` is referenced as a local `replace` directive in `go.mod` pointing to
-`/Users/tantawi/Projects/llm-inferno/optimizer-light`. Update this to a tagged version
-before publishing.
+`optimizer-light` resolves to the tagged `v0.7.0` release from the public registry.

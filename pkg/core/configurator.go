@@ -73,13 +73,17 @@ func NewConfigurator(configData *config.ConfigData) (c *Configurator, err error)
 	return c, nil
 }
 
-// NewConfiguratorWithCovariance creates a Configurator using an externally provided covariance matrix
-// for P (state estimate uncertainty) instead of computing it from InitState. This enables state
-// continuity across tuning cycles by restoring a previously saved covariance.
+// NewConfiguratorWithCovariance creates a Configurator using an externally provided covariance
+// matrix for P (state estimate uncertainty) instead of computing it from InitState. This enables
+// state continuity across tuning cycles by restoring a previously saved covariance.
+// If covariance is nil, the behavior is identical to NewConfigurator.
 func NewConfiguratorWithCovariance(configData *config.ConfigData, covariance *mat.Dense) (c *Configurator, err error) {
 	c, err = NewConfigurator(configData)
 	if err != nil {
 		return nil, err
+	}
+	if covariance == nil {
+		return c, nil
 	}
 	n := c.nX
 	if covariance.RawMatrix().Rows != n || covariance.RawMatrix().Cols != n {
