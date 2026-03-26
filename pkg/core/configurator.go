@@ -3,7 +3,6 @@ package core
 import (
 	"bytes"
 	"fmt"
-	"math"
 
 	"github.com/llm-inferno/model-tuner/pkg/config"
 	"gonum.org/v1/gonum/mat"
@@ -42,9 +41,11 @@ func NewConfigurator(configData *config.ConfigData) (c *Configurator, err error)
 	fd := configData.FilterData
 	m := len(md.ExpectedObservations)
 	obsCOV := make([]float64, m)
-	factor := math.Pow(fd.ErrorLevel/fd.TPercentile, 2) / fd.GammaFactor
+	t := fd.ErrorLevel / fd.TPercentile
+	factor := (t * t) / fd.GammaFactor
 	for j := range m {
-		obsCOV[j] = factor * math.Pow(md.ExpectedObservations[j], 2)
+		obs := md.ExpectedObservations[j]
+		obsCOV[j] = factor * obs * obs
 	}
 	R := mat.DenseCopyOf(mat.NewDiagDense(m, obsCOV))
 
@@ -72,13 +73,31 @@ func NewConfigurator(configData *config.ConfigData) (c *Configurator, err error)
 	return c, nil
 }
 
+// NewConfiguratorWithCovariance creates a Configurator using an externally provided covariance matrix
+// for P (state estimate uncertainty) instead of computing it from InitState. This enables state
+// continuity across tuning cycles by restoring a previously saved covariance.
+func NewConfiguratorWithCovariance(configData *config.ConfigData, covariance *mat.Dense) (c *Configurator, err error) {
+	c, err = NewConfigurator(configData)
+	if err != nil {
+		return nil, err
+	}
+	n := c.nX
+	if covariance.RawMatrix().Rows != n || covariance.RawMatrix().Cols != n {
+		return nil, fmt.Errorf("covariance matrix size %dx%d does not match state dimension %d",
+			covariance.RawMatrix().Rows, covariance.RawMatrix().Cols, n)
+	}
+	c.P = mat.DenseCopyOf(covariance)
+	return c, nil
+}
+
 func (c *Configurator) GetStateCov(x *mat.VecDense) (*mat.Dense, error) {
 	if x.Len() != c.nX {
 		return nil, mat.ErrNormOrder
 	}
 	changeCov := make([]float64, c.nX)
 	for i := 0; i < c.nX; i++ {
-		changeCov[i] = math.Pow(c.percentChange[i]*x.AtVec(i), 2)
+		v := c.percentChange[i] * x.AtVec(i)
+		changeCov[i] = v * v
 	}
 	return mat.DenseCopyOf(mat.NewDiagDense(c.nX, changeCov)), nil
 }
