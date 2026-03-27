@@ -51,3 +51,18 @@ spec:
             name: model-tuner-config
         - name: tmp
           emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-tuner
+  labels:
+    app: model-tuner
+spec:
+  type: ClusterIP
+  selector:
+    app: model-tuner
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
