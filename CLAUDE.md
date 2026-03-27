@@ -42,7 +42,7 @@ Observer → Environment → Tuner (EKF predict + update) → GetParams() → Tu
   - `OnlineObserver`: queries a live Prometheus server (uses `TOKEN` and `PROMETHEUS_ADDRESS` env vars)
   - `DataObserver`: processes pre-collected benchmark data
 
-- **`pkg/config/`** — `ConfigData` struct with `FilterData` and `ModelData` sub-structs. JSON config files live in `samples/`.
+- **`pkg/config/`** — `ConfigData` struct with `FilterData` and `ModelData` sub-structs. JSON config files live in `config-data/`.
 
 - **`pkg/metrics/`** — Thin Prometheus HTTP client used by `OnlineObserver`.
 
@@ -58,7 +58,7 @@ The active variant determines which `SystemFuncCreator` (decode vs. prefill-deco
 
 ### Configuration
 
-JSON configs are loaded from the directory specified by `CONFIG_DATA_DIR` (default: `../../samples`). Sample configs in `samples/`: `default-config-data.json`, `decode-config-data.json`, `prefill-decode-config-data.json`, `benchmark-config-data.json`.
+JSON configs are loaded from the directory specified by `CONFIG_DATA_DIR` (default: `config-data`). Sample configs in `config-data/`: `default-config-data.json`, `decode-config-data.json`, `prefill-decode-config-data.json`, `benchmark-config-data.json`.
 
 Key `ModelData` fields: `initState` ([alpha, beta, gamma] initial values), `boundedState`/`minState`/`maxState` (EKF state clamping), `percentChange` (process noise scaling).
 
@@ -66,7 +66,7 @@ Key `ModelData` fields: `initState` ([alpha, beta, gamma] initial values), `boun
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `CONFIG_DATA_DIR` | Directory with JSON config files | `samples` |
+| `CONFIG_DATA_DIR` | Directory with JSON config files | `config-data` |
 | `TUNER_HOST` / `TUNER_PORT` | Tuner REST server address | `localhost:8080` |
 | `COLLECTOR_HOST` / `COLLECTOR_PORT` | Prometheus collector address | — |
 | `TOKEN` | Bearer token for Prometheus | — |

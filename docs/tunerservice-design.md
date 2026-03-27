@@ -161,7 +161,7 @@ Existing `Run()` and all other behavior are unchanged.
 ## Configuration
 
 Filter and model parameters are loaded from JSON files in `CONFIG_DATA_DIR`
-(default: `../../samples`). Lookup order:
+(default: `../../config-data`). Lookup order:
 
 1. `<CONFIG_DATA_DIR>/<modelName>-config-data.json`
 2. `<CONFIG_DATA_DIR>/default-config-data.json` (fallback)
@@ -208,7 +208,7 @@ GET /getparams?model=llama3-8b&accelerator=A100
 ## Running the Demo
 
 ```bash
-CONFIG_DATA_DIR=./samples TUNER_PORT=8081 go run ./demos/tunerservice/
+CONFIG_DATA_DIR=./config-data TUNER_PORT=8081 go run ./demos/tunerservice/
 ```
 
 The demo starts the server and immediately posts synthetic ReplicaSpecs to `/tune`,

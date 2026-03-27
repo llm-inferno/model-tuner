@@ -12,7 +12,7 @@ func LoadConfigForServer(serverName string) (*config.ConfigData, error) {
 	// Get the directory path from environment variable or use default
 	configDir := os.Getenv("CONFIG_DATA_DIR")
 	if configDir == "" {
-		configDir = "samples" // fall back to default directory
+		configDir = "config-data" // fall back to default directory
 	}
 
 	// check if the config data for the server exists, otherwise use default config data

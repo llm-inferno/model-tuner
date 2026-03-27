@@ -80,11 +80,11 @@ Incoming `ReplicaSpecs` are grouped by `(Model, Accelerator)`. Within each group
 
 ## Configuration
 
-Filter and model parameters are loaded from JSON config files via the `CONFIG_DATA_DIR` environment variable (default: `samples`). A model-specific file `<model>-config-data.json` is used when present; otherwise `default-config-data.json` is loaded as a fallback.
+Filter and model parameters are loaded from JSON config files via the `CONFIG_DATA_DIR` environment variable (default: `config-data`). A model-specific file `<model>-config-data.json` is used when present; otherwise `default-config-data.json` is loaded as a fallback.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `CONFIG_DATA_DIR` | Directory with JSON config files | `samples` |
+| `CONFIG_DATA_DIR` | Directory with JSON config files | `config-data` |
 | `TUNER_HOST` | Server listen address | `localhost` |
 | `TUNER_PORT` | Server listen port | `8081` |
 

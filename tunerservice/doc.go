@@ -54,7 +54,7 @@
 // # Configuration
 //
 // Filter and model parameters are loaded from JSON config files via the CONFIG_DATA_DIR
-// environment variable (default: samples). A model-specific file
+// environment variable (default: config-data). A model-specific file
 // (<model>-config-data.json) is used when present; otherwise default-config-data.json
 // is loaded as a fallback.
 //
