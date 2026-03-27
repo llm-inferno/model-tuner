@@ -74,7 +74,7 @@ func main() {
 	}
 	fmt.Print("Enter output CSV file name (leave blank to skip saving): ")
 	var outputFileName string
-	fmt.Scanln(&outputFileName)
+	_, _ = fmt.Scanln(&outputFileName)
 
 	if outputFileName != "" {
 		err := writeResultsToCSV(outputFileName, results)
@@ -91,13 +91,13 @@ func writeResultsToCSV(filename string, results []result) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
 	// Write header
-	writer.Write([]string{"Step", "Alpha", "Beta", "DiffWait", "DiffITL"})
+	_ = writer.Write([]string{"Step", "Alpha", "Beta", "DiffWait", "DiffITL"})
 
 	// Write each result row
 	for _, r := range results {
@@ -108,7 +108,7 @@ func writeResultsToCSV(filename string, results []result) error {
 			fmt.Sprintf("%.6f", r.DiffWait),
 			fmt.Sprintf("%.6f", r.DiffITL),
 		}
-		writer.Write(row)
+		_ = writer.Write(row)
 	}
 	return nil
 }

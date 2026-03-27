@@ -95,7 +95,7 @@ func main() {
 		<-sigs
 		fmt.Print("\nCtrl+C detected. Enter filename for CSV output (or press Enter to skip): ")
 		var filename string
-		fmt.Scanln(&filename)
+		_, _ = fmt.Scanln(&filename)
 
 		filename = strings.TrimSpace(filename)
 		if filename == "" {
@@ -172,7 +172,7 @@ func writeCSV(filename string, data []record) {
 		fmt.Printf("Failed to create CSV file: %s\n", err)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
@@ -182,7 +182,7 @@ func writeCSV(filename string, data []record) {
 		"alpha", "beta", "diffWait", "diffITL", "", // empty spacer column
 		"Model", "ExperimentRPM", "InputLen", "OutputLen", "Dataset",
 	}
-	writer.Write(header)
+	_ = writer.Write(header)
 
 	for _, r := range data {
 		row := []string{
@@ -203,7 +203,7 @@ func writeCSV(filename string, data []record) {
 			strconv.Itoa(r.OutputLen),
 			r.Dataset,
 		}
-		writer.Write(row)
+		_ = writer.Write(row)
 	}
 	fmt.Println("CSV file written successfully as", filename)
 }

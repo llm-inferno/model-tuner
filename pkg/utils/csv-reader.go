@@ -11,7 +11,7 @@ func ReadCsvFile(filePath string) ([][]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to read input file %s: %v", filePath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	csvReader := csv.NewReader(f)
 	records, err := csvReader.ReadAll()
