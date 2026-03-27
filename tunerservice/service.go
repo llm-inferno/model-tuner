@@ -177,3 +177,48 @@ func (ts *TunerService) buildModelData(groups map[string][]optconfig.ServerSpec)
 func (ts *TunerService) GetParams(model, accelerator string) *LearnedParameters {
 	return ts.paramStore.Get(model, accelerator)
 }
+
+// Merge accepts the Controller's current ModelData and returns it with PerfParms overlaid
+// from the ParameterStore for any matching (name, accelerator) pairs. Entries in the
+// ParameterStore that have no match in the input are appended with default non-parameter fields.
+func (ts *TunerService) Merge(modelData *optconfig.ModelData) *optconfig.ModelData {
+	allParams := ts.paramStore.GetAll()
+	matched := make(map[string]bool, len(allParams))
+
+	// Phase 1: overlay tuned PerfParms onto existing entries.
+	result := make([]optconfig.ModelAcceleratorPerfData, len(modelData.PerfData))
+	for i, entry := range modelData.PerfData {
+		result[i] = entry
+		key := makeKey(entry.Name, entry.Acc)
+		if params, ok := allParams[key]; ok {
+			result[i].PerfParms = optconfig.PerfParms{
+				Alpha: params.Alpha,
+				Beta:  params.Beta,
+				Gamma: params.Gamma,
+			}
+			matched[key] = true
+		}
+	}
+
+	// Phase 2: append ParameterStore entries not present in the input.
+	for key, params := range allParams {
+		if matched[key] {
+			continue
+		}
+		model, acc := splitKey(key)
+		result = append(result, optconfig.ModelAcceleratorPerfData{
+			Name:         model,
+			Acc:          acc,
+			AccCount:     DefaultAccCount,
+			MaxBatchSize: DefaultMaxBatchSize,
+			AtTokens:     DefaultAtTokens,
+			PerfParms: optconfig.PerfParms{
+				Alpha: params.Alpha,
+				Beta:  params.Beta,
+				Gamma: params.Gamma,
+			},
+		})
+	}
+
+	return &optconfig.ModelData{PerfData: result}
+}
