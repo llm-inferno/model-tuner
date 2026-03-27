@@ -39,6 +39,14 @@ Accepts per-replica `ServerSpec` metrics from the control-loop Collector, runs E
 
 **Response:** `config.ModelData` with tuned `alpha`, `beta`, `gamma` per model/accelerator pair.
 
+### `POST /merge`
+
+Accepts the Controller's current `ModelData` and returns it with `PerfParms` (alpha/beta/gamma) overlaid from the `ParameterStore` for matching `(model, accelerator)` pairs. `ParameterStore` entries not present in the input are appended with tuned `PerfParms` and default non-parameter fields (`accCount=1`, `maxBatchSize=256`, `atTokens=1024`). An empty `models` array is valid input.
+
+**Request body:** `config.ModelData`
+
+**Response:** merged `config.ModelData`
+
 ### `GET /getparams?model=<name>&accelerator=<acc>`
 
 Returns the most recently stored parameters for a specific model/accelerator pair without triggering a new tuning cycle.
@@ -62,9 +70,10 @@ Returns the most recently stored parameters for a specific model/accelerator pai
 Intended usage from the control-loop `Controller`:
 
 1. Call the Collector to obtain `ServerCollectorInfo` (includes `ReplicaSpecs`).
-2. `POST` `ReplicaSpecs` to `/tune` — receive updated `ModelData`.
-3. Set `SystemData.Spec.Models` to the returned `ModelData`.
-4. `POST` `SystemData` to the Optimizer as usual.
+2. `POST` `ReplicaSpecs` to `/tune` — EKF parameters are updated in the `ParameterStore`.
+3. `POST` current `ModelData` to `/merge` — receive merged `ModelData` with tuned `PerfParms` overlaid.
+4. Set `SystemData.Spec.Models` to the merged `ModelData`.
+5. `POST` `SystemData` to the Optimizer as usual.
 
 ## EKF Features
 
@@ -94,4 +103,4 @@ Filter and model parameters are loaded from JSON config files via the `CONFIG_DA
 go run ./demos/tunerservice
 ```
 
-Starts the tuner HTTP server on the configured host and port, ready to accept `POST /tune` and `GET /getparams` requests.
+Starts the tuner HTTP server on the configured host and port, ready to accept `POST /tune`, `POST /merge`, and `GET /getparams` requests.

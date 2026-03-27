@@ -47,7 +47,8 @@ On each call to `GetEnvironment()`, the observer queries Prometheus for the late
 The `tunerservice` package is a passive HTTP server designed for integration with the llm-inferno control-loop. It accepts per-replica metrics from the Collector, runs EKF tuning grouped by `(model, accelerator)`, and returns updated `ModelData` (alpha, beta, gamma) ready for direct use by the Optimizer — no internal polling loop or Collector dependency.
 
 **Key endpoints:**
-- `POST /tune` — accepts `[]config.ServerSpec`, returns tuned `config.ModelData`
+- `POST /tune` — accepts `[]config.ServerSpec`, runs EKF tuning, stores results in `ParameterStore`
+- `POST /merge` — accepts current `config.ModelData`, returns it with tuned `PerfParms` overlaid from `ParameterStore`
 - `GET /getparams?model=<name>&accelerator=<acc>` — retrieves the last stored parameters for a pair
 
 See [`tunerservice/README.md`](tunerservice/README.md) for full API docs, EKF features, and configuration.
