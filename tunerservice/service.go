@@ -182,6 +182,10 @@ func (ts *TunerService) GetParams(model, accelerator string) *LearnedParameters 
 // from the ParameterStore for any matching (name, accelerator) pairs. Entries in the
 // ParameterStore that have no match in the input are appended with default non-parameter fields.
 func (ts *TunerService) Merge(modelData *optconfig.ModelData) *optconfig.ModelData {
+	if modelData == nil {
+		modelData = &optconfig.ModelData{}
+	}
+
 	allParams := ts.paramStore.GetAll()
 	matched := make(map[string]bool, len(allParams))
 
@@ -196,7 +200,11 @@ func (ts *TunerService) Merge(modelData *optconfig.ModelData) *optconfig.ModelDa
 				Beta:  params.Beta,
 				Gamma: params.Gamma,
 			}
-			matched[key] = true
+			if matched[key] {
+				slog.Warn("duplicate model/accelerator key in input ModelData", "key", key)
+			} else {
+				matched[key] = true
+			}
 		}
 	}
 
