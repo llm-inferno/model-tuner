@@ -1,0 +1,11 @@
+.git
+.gitignore
+docs/
+**/*.md
+venv/
+demos/
+.DS_Store
+.claude/
+go.work
+go.work.sum
+.env*
