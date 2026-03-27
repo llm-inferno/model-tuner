@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-tuner
+  labels:
+    app: model-tuner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: model-tuner
+  template:
+    metadata:
+      labels:
+        app: model-tuner
+    spec:
+      containers:
+        - name: model-tuner
+          image: quay.io/atantawi/inferno-model-tuner:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+          env:
+            - name: CONFIG_DATA_DIR
+              value: /etc/tuner/config
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tuner/config
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: config
+          configMap:
+            name: model-tuner-config
