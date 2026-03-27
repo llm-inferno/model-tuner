@@ -14,3 +14,11 @@ const (
 	DefaultTunerHost = "localhost"
 	DefaultTunerPort = "8081"
 )
+
+// Default field values used when the ParameterStore has a model/accelerator entry
+// that is not present in the Controller's current ModelData.
+const (
+	DefaultAccCount     = 1
+	DefaultMaxBatchSize = 256
+	DefaultAtTokens     = 1024
+)
