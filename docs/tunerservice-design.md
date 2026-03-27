@@ -4,8 +4,9 @@
 
 The tuner service uses a push-based design: the Controller calls `/tune` with
 per-replica performance data (`ReplicaSpecs`) it already has from its own Collector,
-and receives tuned queueing model parameters grouped by `(model, accelerator)` pair
-ready to pass to the Optimizer. There is no internal polling loop or Collector
+and receives tuned queueing model parameters grouped by `(model, accelerator)` pair.
+The Controller then calls `/merge` to blend these tuned parameters with its current
+state before passing them to the Optimizer. There is no internal polling loop or Collector
 dependency.
 
 ---
@@ -32,7 +33,9 @@ Control-Loop Controller
   │  ◄──────────────[ ModelData (tuned pairs only) ]───┘
   │
   │  POST /merge ──[ ModelData (current) ]──────────►  TunerServer
-  │  ◄──────────────[ ModelData (merged)  ]────────────┘
+  │                                                         │
+  │                                                    TunerService.Merge()
+  │  ◄──────────────[ ModelData (merged)  ]────────────────┘
   │
   │  SystemData.Spec.Models = merged ModelData
   │
@@ -50,7 +53,7 @@ Control-Loop Controller
 | `service.go` | `TunerService` — core tuning logic |
 | `utils.go` | Grouping, environment building, `guessInitState` |
 | `server.go` | Gin HTTP server setup |
-| `handlers.go` | `POST /tune`, `GET /getparams` |
+| `handlers.go` | `POST /tune`, `GET /getparams`, `POST /merge` |
 
 ---
 
