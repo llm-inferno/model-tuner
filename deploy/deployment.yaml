@@ -29,6 +29,8 @@ spec:
             - name: config
               mountPath: /etc/tuner/config
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               cpu: 100m
@@ -47,3 +49,5 @@ spec:
         - name: config
           configMap:
             name: model-tuner-config
+        - name: tmp
+          emptyDir: {}
