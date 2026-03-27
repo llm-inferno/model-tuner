@@ -1,4 +1,4 @@
-// Package tunerservice2 provides an EKF-based model parameter tuning service designed
+// Package tunerservice provides an EKF-based model parameter tuning service designed
 // for integration with the llm-inferno control-loop.
 //
 // # Overview
@@ -54,7 +54,7 @@
 // # Configuration
 //
 // Filter and model parameters are loaded from JSON config files via the CONFIG_DATA_DIR
-// environment variable (default: ../../samples). A model-specific file
+// environment variable (default: samples). A model-specific file
 // (<model>-config-data.json) is used when present; otherwise default-config-data.json
 // is loaded as a fallback.
 //
@@ -66,4 +66,4 @@
 //
 //	GET /getparams?model=<name>&accelerator=<acc>
 //	  Response: JSON with alpha, beta, gamma, NIS, lastUpdated
-package tunerservice2
+package tunerservice

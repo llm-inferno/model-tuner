@@ -1,15 +1,12 @@
-# TunerService2 — Design & Implementation
+# TunerService — Design & Implementation
 
-## Context
+## Design rationale
 
-The original `tunerservice/` is tightly coupled to a Collector it polls itself
-(`GET /getenv`). This does not fit the control-loop architecture, where the Controller
-already has per-replica performance data (`ReplicaSpecs`) after calling its own
-Collector, and needs tuned queueing model parameters grouped by model/accelerator pair
-to pass to the Optimizer.
-
-`pkg/tunerservice2/` replaces the pull-based design with a push-based one: the
-Controller calls `/tune` with data it already has, and receives `ModelData` in return.
+The tuner service uses a push-based design: the Controller calls `/tune` with
+per-replica performance data (`ReplicaSpecs`) it already has from its own Collector,
+and receives tuned queueing model parameters grouped by `(model, accelerator)` pair
+ready to pass to the Optimizer. There is no internal polling loop or Collector
+dependency.
 
 ---
 
@@ -211,7 +208,7 @@ GET /getparams?model=llama3-8b&accelerator=A100
 ## Running the Demo
 
 ```bash
-CONFIG_DATA_DIR=./samples TUNER_PORT=8081 go run ./demos/tunerservice2/
+CONFIG_DATA_DIR=./samples TUNER_PORT=8081 go run ./demos/tunerservice/
 ```
 
 The demo starts the server and immediately posts synthetic ReplicaSpecs to `/tune`,

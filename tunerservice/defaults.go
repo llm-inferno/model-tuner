@@ -1,12 +1,7 @@
 package tunerservice
 
 const (
-	CollectorHostEnvName = "COLLECTOR_HOST"
-	CollectorPortEnvName = "COLLECTOR_PORT"
+	// baseFactor is the fraction of ITL assumed to be the baseline iteration overhead (alpha).
+	// Used in guessInitState to derive an initial estimate of alpha from observed ITL.
+	baseFactor = 0.9
 )
-
-const CollectEnvVerb = "getenv"
-
-const DefaultTunerPeriodSeconds int = 60 // periodicity of tuner
-
-var CollectorURL string

@@ -1,106 +1,179 @@
-/*
-Manages the core tuner server functionality.
-*/
-
 package tunerservice
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"sync"
+	"log/slog"
+	"time"
 
+	optconfig "github.com/llm-inferno/optimizer-light/pkg/config"
+
+	"github.com/llm-inferno/model-tuner/pkg/config"
 	"github.com/llm-inferno/model-tuner/pkg/core"
 	"github.com/llm-inferno/model-tuner/pkg/utils"
 )
 
-var mutex sync.Mutex
-
-/*
-	tuner service acts both as a server and client.
-
-As a client, it uses getenv primitive to get the environment for every server.
-As a server, the getparams primitive returns the alpha, beta of the asked server.
-*/
+// TunerService groups replica metrics by (model, accelerator), runs EKF tuning per group,
+// maintains a ParameterStore for state continuity, and returns updated ModelData.
 type TunerService struct {
-	Tuners map[string]*core.Tuner
+	paramStore *ParameterStore
 }
 
-func NewTunerService() (*TunerService, error) {
-	ts := &TunerService{
-		Tuners: map[string]*core.Tuner{},
+// NewTunerService creates a TunerService with an empty ParameterStore.
+func NewTunerService() *TunerService {
+	return &TunerService{
+		paramStore: NewParameterStore(),
 	}
-	return ts, nil
 }
 
-func (ts *TunerService) UpdateTunersAndRun() error {
-	// fmt.Println("\n==================== Fetching Environments and Updating Tuners ====================")
-	envs, err := ts.GetAllEnvironments()
+// Tune accepts per-replica ServerSpecs from the control-loop Collector, runs EKF tuning for each
+// (model, accelerator) group, and returns updated ModelData with tuned alpha/beta/gamma.
+// Returns an error if no parameters could be produced (all replicas idle or all groups failed).
+func (ts *TunerService) Tune(replicaSpecs []optconfig.ServerSpec) (*optconfig.ModelData, error) {
+	groups := groupByModelAccelerator(replicaSpecs)
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("no replicas with active traffic in request")
+	}
+
+	for key, replicas := range groups {
+		model, accelerator := splitKey(key)
+		if err := ts.tuneGroup(model, accelerator, replicas); err != nil {
+			slog.Warn("tuning failed for group", "key", key, "err", err)
+		}
+	}
+
+	modelData := ts.buildModelData(groups)
+	if len(modelData.PerfData) == 0 {
+		return nil, fmt.Errorf("tuning produced no results for any model/accelerator group")
+	}
+	return modelData, nil
+}
+
+// tuneGroup runs EKF tuning for all replicas in a single (model, accelerator) group.
+func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfig.ServerSpec) error {
+	envs := buildEnvironments(replicas)
+	if len(envs) == 0 {
+		return fmt.Errorf("no valid environments for %s/%s", model, accelerator)
+	}
+
+	tuner, err := ts.createTuner(model, accelerator, envs[0])
 	if err != nil {
-		return fmt.Errorf("error fetching environments: %w", err)
+		return fmt.Errorf("create tuner for %s/%s: %w", model, accelerator, err)
 	}
 
-	for serverName, env := range envs {
-		mutex.Lock()
-		tuner, exists := ts.Tuners[serverName]
-		mutex.Unlock()
-
-		// create a new tuner if it does not exist
-		if !exists {
-			configData, err := utils.LoadConfigForServer("default")
-			if err != nil {
-				return fmt.Errorf("error fetching config for server %s: %v", serverName, err)
-			}
-
-			tuner, err = core.NewTuner(configData, env)
-			if err != nil {
-				return fmt.Errorf("error creating tuner for %s: %v", serverName, err)
-			}
-			observationFunc := core.NewQueueModelSystemFuncCreatorPrefillDecode(tuner)
-			if err = tuner.SetObservationFunc(observationFunc); err != nil {
-				return fmt.Errorf("error setting tuner system functionfor %s: %v", serverName, err)
-			}
-			mutex.Lock()
-			ts.Tuners[serverName] = tuner
-			mutex.Unlock()
+	var lastResults *core.TunedResults
+	for _, env := range envs {
+		results, runErr := tuner.RunWithValidation(env)
+		if runErr != nil {
+			slog.Warn("EKF run error", "model", model, "accelerator", accelerator, "err", runErr)
+			continue
 		}
-		fmt.Println(env.String())
-		if err := tuner.Run(env); err != nil {
-			return fmt.Errorf("error running tuner for %s: %v", serverName, err)
+		if results.ValidationFailed {
+			slog.Debug("EKF update rejected", "model", model, "accelerator", accelerator, "NIS", results.NIS)
 		}
-
-		// Print the state of the tuner after update
-		fmt.Printf(
-			// "Server: %s\n
-			"%s;   %s;   %s\n",
-			// serverName,
-			utils.VecString("X", tuner.X()),
-			utils.VecString("Delta", tuner.Innovation()),
-			utils.MatString("P", tuner.P()),
-		)
+		lastResults = results
 	}
+
+	if lastResults == nil || lastResults.ServiceParms == nil {
+		return fmt.Errorf("no valid results for %s/%s", model, accelerator)
+	}
+
+	// Preserve the previously stored NIS when the last update was rolled back, so the
+	// stored NIS always reflects a valid (accepted) filter update, not a rejected outlier.
+	nisToStore := lastResults.NIS
+	if lastResults.ValidationFailed {
+		if prev := ts.paramStore.Get(model, accelerator); prev != nil {
+			nisToStore = prev.NIS
+		} else {
+			nisToStore = 0
+		}
+	}
+
+	ts.paramStore.Set(model, accelerator, &LearnedParameters{
+		Alpha:       lastResults.ServiceParms.Alpha,
+		Beta:        lastResults.ServiceParms.Beta,
+		Gamma:       lastResults.ServiceParms.Gamma,
+		NIS:         nisToStore,
+		Covariance:  covToSlice(lastResults.Covariance),
+		LastUpdated: time.Now(),
+	})
 	return nil
 }
 
-func (ts *TunerService) GetAllEnvironments() (map[string]core.Environment, error) {
-	// call collector to get updated environments for the managed servers
-	endPoint := CollectorURL + "/" + CollectEnvVerb
-	// fmt.Println("Requesting:", endPoint)
+// createTuner creates a Tuner for the given model/accelerator, restoring state from the
+// ParameterStore if available, or guessing initial state from the first environment.
+func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.EnvironmentPrefillDecode) (*core.Tuner, error) {
+	existing := ts.paramStore.Get(model, accelerator)
 
-	response, getErr := http.Get(endPoint)
-	if getErr != nil {
-		return nil, fmt.Errorf("error in getting http response: %v", getErr)
-	}
-	body, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return nil, fmt.Errorf("error in reading http response body: %v", readErr)
+	var configData *config.ConfigData
+	var err error
+
+	// LoadConfigForServer falls back to default if no model-specific config exists.
+	configData, err = utils.LoadConfigForServer(model)
+	if err != nil {
+		return nil, fmt.Errorf("load config for %s: %w", model, err)
 	}
 
-	envInfo := make(map[string]core.Environment)
-	jsonErr := json.Unmarshal(body, &envInfo)
-	if jsonErr != nil {
-		return nil, fmt.Errorf("error in unmarshalling json: %v", jsonErr)
+	if existing != nil {
+		// Restore previous alpha/beta/gamma as initial state
+		configData.ModelData.InitState = []float64{
+			float64(existing.Alpha),
+			float64(existing.Beta),
+			float64(existing.Gamma),
+		}
+		if cov := existing.CovarianceMatrix(); cov != nil {
+			tuner, err := core.NewTunerWithCovariance(configData, firstEnv, cov)
+			if err != nil {
+				return nil, err
+			}
+			if err := tuner.SetObservationFunc(core.NewQueueModelSystemFuncCreatorPrefillDecode(tuner)); err != nil {
+				return nil, err
+			}
+			return tuner, nil
+		}
+	} else {
+		// Guess initial state from observations if possible
+		if initState := guessInitState(firstEnv); initState != nil {
+			configData.ModelData.InitState = initState
+		}
 	}
-	return envInfo, nil
+
+	tuner, err := core.NewTuner(configData, firstEnv)
+	if err != nil {
+		return nil, err
+	}
+	if err := tuner.SetObservationFunc(core.NewQueueModelSystemFuncCreatorPrefillDecode(tuner)); err != nil {
+		return nil, err
+	}
+	return tuner, nil
+}
+
+// buildModelData constructs ModelData from the ParameterStore for all observed model/accelerator groups.
+// It uses replica data to fill in MaxBatchSize.
+func (ts *TunerService) buildModelData(groups map[string][]optconfig.ServerSpec) *optconfig.ModelData {
+	var entries []optconfig.ModelAcceleratorPerfData
+	for key, replicas := range groups {
+		model, accelerator := splitKey(key)
+		params := ts.paramStore.Get(model, accelerator)
+		if params == nil {
+			continue
+		}
+		maxBatch := maxBatchFromReplicas(replicas)
+		entries = append(entries, optconfig.ModelAcceleratorPerfData{
+			Name:         model,
+			Acc:          accelerator,
+			MaxBatchSize: maxBatch,
+			PerfParms: optconfig.PerfParms{
+				Alpha: params.Alpha,
+				Beta:  params.Beta,
+				Gamma: params.Gamma,
+			},
+		})
+	}
+	return &optconfig.ModelData{PerfData: entries}
+}
+
+// GetParams returns the most recently tuned parameters for a model/accelerator pair,
+// or nil if no tuning has been performed for that pair yet.
+func (ts *TunerService) GetParams(model, accelerator string) *LearnedParameters {
+	return ts.paramStore.Get(model, accelerator)
 }

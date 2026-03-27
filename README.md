@@ -44,28 +44,10 @@ On each call to `GetEnvironment()`, the observer queries Prometheus for the late
 
 ## Tuner Service
 
-The TunerService maintains a list of tuners, where each tuner is associated with an inference server.
-The `TunerServer` exposes an HTTP API (`/getparams`) to return the parameters of a server's queueing model when asked.
-It also leverages the `Inferno`'s  collector as the observer to gather real-time environment metrics.
+The `tunerservice` package is a passive HTTP server designed for integration with the llm-inferno control-loop. It accepts per-replica metrics from the Collector, runs EKF tuning grouped by `(model, accelerator)`, and returns updated `ModelData` (alpha, beta, gamma) ready for direct use by the Optimizer — no internal polling loop or Collector dependency.
 
-### Features
+**Key endpoints:**
+- `POST /tune` — accepts `[]config.ServerSpec`, returns tuned `config.ModelData`
+- `GET /getparams?model=<name>&accelerator=<acc>` — retrieves the last stored parameters for a pair
 
-* REST API Endpoint: `GET /getparams?server_name=<name>` returns the tuned parameters (`alpha`, `beta`, and `gamma`) for a specific server.
-Responds with:
-
-```json
-  "server_name": "your-server",
-  "alpha": 0.14,
-  "beta": 0.08,
-  "gamma": 0.00002,
-```
-
-* Periodic Tuning Loop: If configured with a tuning period, the service runs a background loop that:
-
-  * Periodically collects environment metrics via the `\getenv` API call to `Inferno`'s collector.
-  * Updates each server's model parameters `alpha`, `beta`, and `gamma` based on the environment obtained from collector.
-
-### Configuration
-
-1. The environement variables `TUNER_HOST`, `TUNER_PORT`, `COLLECTOR_HOST` and `COLLECTOR_PORT` can be set by running `source setparams.sh`. The script `setparams.sh` can be found in [folder](https://github.com/llm-inferno/control-loop/tree/main/scripts)
-2. The tuning interval is defined via the `tunerPeriod` parameter (in seconds).  
+See [`tunerservice/README.md`](tunerservice/README.md) for full API docs, EKF features, and configuration.

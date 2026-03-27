@@ -1,4 +1,4 @@
-# tunerservice2
+# tunerservice
 
 EKF-based model parameter tuning service for integration with the llm-inferno control-loop.
 
@@ -91,7 +91,7 @@ Filter and model parameters are loaded from JSON config files via the `CONFIG_DA
 ## Running the Demo
 
 ```bash
-go run ./demos/tunerservice2
+go run ./demos/tunerservice
 ```
 
 The demo starts the server and runs synthetic `POST /tune` and `GET /getparams` requests, printing the tuned parameters to stdout.

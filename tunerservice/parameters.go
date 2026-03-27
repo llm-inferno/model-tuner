@@ -1,4 +1,4 @@
-package tunerservice2
+package tunerservice
 
 import (
 	"fmt"

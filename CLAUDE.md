@@ -46,7 +46,7 @@ Observer → Environment → Tuner (EKF predict + update) → GetParams() → Tu
 
 - **`pkg/metrics/`** — Thin Prometheus HTTP client used by `OnlineObserver`.
 
-- **`tunerservice/`** — Gin-based HTTP server. `TunerService` holds a map of server-name → `*Tuner`. Exposes `GET /getparams?server_name=<name>` returning `{server_name, alpha, beta, gamma}`.
+- **`tunerservice/`** — Gin-based HTTP server for control-loop integration. Accepts `POST /tune` with `[]config.ServerSpec` (ReplicaSpecs from the Collector) and returns updated `config.ModelData` (alpha/beta/gamma per model/accelerator). Also exposes `GET /getparams?model=<name>&accelerator=<acc>` for point lookups.
 
 ### Environment variants
 

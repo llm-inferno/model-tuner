@@ -1,67 +1,31 @@
-/*
-Handles API endpoints and HTTP server logic.
-*/
-
 package tunerservice
 
 import (
 	"fmt"
-	"os"
-	"sync"
-	"time"
+	"log/slog"
 
 	"github.com/gin-gonic/gin"
 )
 
-var TS *TunerService
-var Wg sync.WaitGroup
-
+// TunerServer is the HTTP layer that wraps TunerService and exposes its functionality
+// over a Gin REST API.
 type TunerServer struct {
-	router *gin.Engine
+	service *TunerService
+	router  *gin.Engine
 }
 
-func NewTunerServer() (*TunerServer, error) {
-	ts := &TunerServer{
-		router: gin.Default(),
-	}
-	ts.router.GET("/getparams", getparams)
-	CollectorURL = GetURL(CollectorHostEnvName, CollectorPortEnvName)
-	return ts, nil
+// NewTunerServer creates a TunerServer with the given service and registers all routes.
+func NewTunerServer(service *TunerService) *TunerServer {
+	router := gin.Default()
+	ts := &TunerServer{service: service, router: router}
+	router.POST("/tune", ts.handleTune)
+	router.GET("/getparams", ts.handleGetParams)
+	return ts
 }
 
-func (ts *TunerServer) Run(tunerPeriod int) {
-	// Start the server
-	var err error
-	TS, err = NewTunerService()
-	if err != nil {
-		fmt.Printf("Error creating tuner service")
-		return
-	}
-
-	Wg.Go(func() {
-		host := "localhost"
-		port := "8080"
-
-		if h := os.Getenv("TUNER_HOST"); h != "" {
-			host = h
-		}
-		if p := os.Getenv("TUNER_PORT"); p != "" {
-			port = p
-		}
-		ts.router.Run(host + ":" + port)
-	})
-
-	// also start periodic environment updates
-	if tunerPeriod > 0 {
-		Wg.Go(func() {
-			agentTicker := time.NewTicker(time.Second * time.Duration(tunerPeriod))
-			defer agentTicker.Stop()
-
-			for range agentTicker.C {
-				if err := TS.UpdateTunersAndRun(); err != nil {
-					fmt.Printf("%v: skipping cycle ... reason=%s\n", time.Now().Format("15:04:05.000"), err.Error())
-				}
-			}
-		})
-	}
+// Run starts the HTTP server on host:port (blocks until the server stops).
+func (ts *TunerServer) Run(host, port string) error {
+	addr := fmt.Sprintf("%s:%s", host, port)
+	slog.Info("starting TunerServer", "addr", addr)
+	return ts.router.Run(addr)
 }
