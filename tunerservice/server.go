@@ -20,6 +20,7 @@ func NewTunerServer(service *TunerService) *TunerServer {
 	ts := &TunerServer{service: service, router: router}
 	router.POST("/tune", ts.handleTune)
 	router.GET("/getparams", ts.handleGetParams)
+	router.POST("/merge", ts.handleMerge)
 	return ts
 }
 

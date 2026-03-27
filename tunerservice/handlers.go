@@ -55,3 +55,17 @@ func (ts *TunerServer) handleGetParams(c *gin.Context) {
 		"lastUpdated": params.LastUpdated,
 	})
 }
+
+// POST /merge
+// Request body: config.ModelData (the Controller's current ModelData)
+// Response:     config.ModelData with PerfParms overlaid from the ParameterStore;
+//               ParameterStore entries absent from the input are appended with defaults.
+func (ts *TunerServer) handleMerge(c *gin.Context) {
+	var modelData optconfig.ModelData
+	if err := c.ShouldBindJSON(&modelData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
+		return
+	}
+	merged := ts.service.Merge(&modelData)
+	c.JSON(http.StatusOK, merged)
+}
