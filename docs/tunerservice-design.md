@@ -29,9 +29,12 @@ Control-Loop Controller
   │                                           │    ParameterStore.Set(results)
   │                                           └─────────────│
   │                                                         │
-  │  ◄──────────────[ ModelData (alpha/beta/gamma) ]────────┘
+  │  ◄──────────────[ ModelData (tuned pairs only) ]───┘
   │
-  │  SystemData.Spec.Models = ModelData
+  │  POST /merge ──[ ModelData (current) ]──────────►  TunerServer
+  │  ◄──────────────[ ModelData (merged)  ]────────────┘
+  │
+  │  SystemData.Spec.Models = merged ModelData
   │
   │  POST /optimizeOne(SystemData) ──►  Optimizer
   │                                     └── uses alpha/beta/gamma in queue analysis
@@ -202,6 +205,26 @@ GET /getparams?model=llama3-8b&accelerator=A100
 
 404 Not Found   ← if no tuning has been performed for this pair yet
 ```
+
+### `POST /merge`
+
+```
+POST /merge
+Content-Type: application/json
+
+{ "models": [ { "name", "acc", "accCount", "maxBatchSize", "atTokens", "perfParms": { "alpha", "beta", "gamma" } }, ... ] }
+
+200 OK
+{ "models": [ ... merged entries ... ] }
+
+400 Bad Request   ← invalid JSON
+```
+
+Merges the Controller's current `ModelData` with tuned parameters from the `ParameterStore`:
+
+- For each entry in the input: if the ParameterStore has tuned params for that `(name, acc)` pair, its `PerfParms` (alpha/beta/gamma) are replaced. All other fields (`accCount`, `maxBatchSize`, `atTokens`) are preserved unchanged.
+- ParameterStore entries not present in the input are appended as new entries with tuned `PerfParms` and defaults: `accCount=1`, `maxBatchSize=256`, `atTokens=1024`.
+- An empty `models` array is valid input; the response will contain only the extra ParameterStore entries.
 
 ---
 
