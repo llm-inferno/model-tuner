@@ -51,3 +51,74 @@ The `tunerservice` package is a passive HTTP server designed for integration wit
 - `GET /getparams?model=<name>&accelerator=<acc>` — retrieves the last stored parameters for a pair
 
 See [`tunerservice/README.md`](tunerservice/README.md) for full API docs, EKF features, and configuration.
+
+## Running the Tuner Service
+
+### Standalone
+
+Run directly with Go from the repo root:
+
+```bash
+go run ./demos/tunerservice
+```
+
+The server listens on `localhost:8081` by default. Override with environment variables:
+
+```bash
+TUNER_HOST=0.0.0.0 TUNER_PORT=9090 go run ./demos/tunerservice
+```
+
+Config is loaded from `config-data/` by default. Override with:
+
+```bash
+CONFIG_DATA_DIR=/path/to/configs go run ./demos/tunerservice
+```
+
+### Container
+
+**Build the image:**
+
+```bash
+docker build -t inferno-model-tuner:latest .
+```
+
+**Run the container:**
+
+```bash
+docker run --rm -p 8081:8081 inferno-model-tuner:latest
+```
+
+The server binds to `0.0.0.0:8081` inside the container and is reachable at `http://localhost:8081` on the host.
+
+**Override config at runtime** by mounting a directory and setting `CONFIG_DATA_DIR`:
+
+```bash
+docker run --rm -p 8081:8081 \
+  -v /path/to/your/configs:/etc/tuner/config \
+  -e CONFIG_DATA_DIR=/etc/tuner/config \
+  inferno-model-tuner:latest
+```
+
+### Kubernetes
+
+The `deploy/` directory contains ready-to-apply manifests.
+
+**Apply all resources** (ConfigMap + Deployment + Service):
+
+```bash
+kubectl apply -f deploy/
+```
+
+This creates:
+- `model-tuner-config` — ConfigMap with default EKF configuration
+- `model-tuner` — Deployment (1 replica, image `quay.io/atantawi/inferno-model-tuner:latest`)
+- `model-tuner` — ClusterIP Service reachable at `http://model-tuner:8081` within the cluster
+
+**Override config** by replacing the ConfigMap data or mounting a custom ConfigMap and setting `CONFIG_DATA_DIR` in the Deployment's env.
+
+**Check the server is running:**
+
+```bash
+kubectl get pods -l app=model-tuner
+kubectl logs -l app=model-tuner
+```
