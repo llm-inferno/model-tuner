@@ -94,4 +94,4 @@ Filter and model parameters are loaded from JSON config files via the `CONFIG_DA
 go run ./demos/tunerservice
 ```
 
-The demo starts the server and runs synthetic `POST /tune` and `GET /getparams` requests, printing the tuned parameters to stdout.
+Starts the tuner HTTP server on the configured host and port, ready to accept `POST /tune` and `GET /getparams` requests.
