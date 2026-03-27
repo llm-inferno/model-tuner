@@ -16,13 +16,13 @@ import (
 )
 
 func main() {
-	host := os.Getenv("TUNER_HOST")
+	host := os.Getenv(tunerservice.TunerHostEnvName)
 	if host == "" {
-		host = "localhost"
+		host = tunerservice.DefaultTunerHost
 	}
-	port := os.Getenv("TUNER_PORT")
+	port := os.Getenv(tunerservice.TunerPortEnvName)
 	if port == "" {
-		port = "8081"
+		port = tunerservice.DefaultTunerPort
 	}
 
 	service := tunerservice.NewTunerService()

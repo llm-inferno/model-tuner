@@ -5,3 +5,12 @@ const (
 	// Used in guessInitState to derive an initial estimate of alpha from observed ITL.
 	baseFactor = 0.9
 )
+
+// Environment variable names and defaults for the tuner REST server.
+const (
+	TunerHostEnvName = "TUNER_HOST"
+	TunerPortEnvName = "TUNER_PORT"
+
+	DefaultTunerHost = "localhost"
+	DefaultTunerPort = "8081"
+)
