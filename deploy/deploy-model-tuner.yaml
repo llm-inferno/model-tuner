@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: model-tuner
+  namespace: inferno
   labels:
     app: model-tuner
 spec:
@@ -17,7 +18,7 @@ spec:
       containers:
         - name: model-tuner
           image: quay.io/atantawi/inferno-model-tuner:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8081
@@ -40,6 +41,7 @@ spec:
               memory: 512Mi
           securityContext:
             runAsNonRoot: true
+            runAsUser: 100
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
@@ -56,6 +58,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: model-tuner
+  namespace: inferno
   labels:
     app: model-tuner
 spec:

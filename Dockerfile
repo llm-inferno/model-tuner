@@ -12,7 +12,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -trimpath -o tunerservice ./demos/tunerservice
 
 # Runtime stage
-FROM alpine:3.21
+FROM alpine:3.20
 
 # Run as non-root user
 RUN addgroup -S tuner && adduser -S -G tuner tuner
