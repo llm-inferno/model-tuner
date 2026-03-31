@@ -62,12 +62,16 @@ JSON configs are loaded from the directory specified by `CONFIG_DATA_DIR` (defau
 
 Key `ModelData` fields: `initState` ([alpha, beta, gamma] initial values), `boundedState`/`minState`/`maxState` (EKF state clamping), `percentChange` (process noise scaling).
 
+### Deployment
+
+The primary deployment is as a sidecar container in the `inferno` pod (see `github.com/llm-inferno/control-loop/yamls/deploy/deploy-loop.yaml`), listening on port 3304 with its config ConfigMap mounted at `/etc/tuner/config`. A standalone deployment manifest is also provided in `deploy/deploy-model-tuner.yaml` for independent operation.
+
 ### Service environment variables
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `CONFIG_DATA_DIR` | Directory with JSON config files | `config-data` |
-| `TUNER_HOST` / `TUNER_PORT` | Tuner REST server address | `localhost:8081` |
+| `CONFIG_DATA_DIR` | Directory with JSON config files | `config-data` (`/etc/tuner/config` in inferno pod) |
+| `TUNER_HOST` / `TUNER_PORT` | Tuner REST server address | `localhost:8081` (`localhost:3304` in inferno pod) |
 | `COLLECTOR_HOST` / `COLLECTOR_PORT` | Prometheus collector address | — |
 | `TOKEN` | Bearer token for Prometheus | — |
 | `PROMETHEUS_ADDRESS` | Prometheus server URL | — |

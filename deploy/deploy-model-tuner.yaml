@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: model-tuner
-          image: quay.io/atantawi/inferno-model-tuner:latest
+          image: quay.io/atantawi/inferno-tuner:latest
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
