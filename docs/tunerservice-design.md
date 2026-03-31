@@ -166,11 +166,9 @@ Existing `Run()` and all other behavior are unchanged.
 
 ## Configuration
 
-Filter and model parameters are loaded from JSON files in `CONFIG_DATA_DIR`
-(default: `../../config-data`). Lookup order:
-
-1. `<CONFIG_DATA_DIR>/<modelName>-config-data.json`
-2. `<CONFIG_DATA_DIR>/default-config-data.json` (fallback)
+Filter and model parameters are loaded from `<CONFIG_DATA_DIR>/default-config-data.json`
+(default: `../../config-data`). The tuner service always uses the `default` config type;
+model name does not affect which config file is loaded.
 
 Key `ModelData` fields used:
 
