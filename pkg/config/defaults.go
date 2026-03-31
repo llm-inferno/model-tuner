@@ -15,3 +15,7 @@ const DefaultStudentPercentile = float32(1.96)
 
 // predicted percent change in state values
 const DefaultPercentChange = float32(5.0)
+
+// DefaultConfigType is the config-data type used when no specific type is requested.
+// Valid types correspond to config-data filenames: "default", "decode", "prefill-decode", "benchmark".
+const DefaultConfigType = "default"

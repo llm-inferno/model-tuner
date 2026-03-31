@@ -107,8 +107,7 @@ func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.En
 	var configData *config.ConfigData
 	var err error
 
-	// LoadConfigForServer falls back to default if no model-specific config exists.
-	configData, err = utils.LoadConfigForServer(model)
+	configData, err = utils.LoadConfigForServer(config.DefaultConfigType)
 	if err != nil {
 		return nil, fmt.Errorf("load config for %s: %w", model, err)
 	}

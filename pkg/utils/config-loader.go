@@ -8,17 +8,17 @@ import (
 	"github.com/llm-inferno/model-tuner/pkg/config"
 )
 
-func LoadConfigForServer(serverName string) (*config.ConfigData, error) {
+func LoadConfigForServer(configType string) (*config.ConfigData, error) {
 	// Get the directory path from environment variable or use default
 	configDir := os.Getenv("CONFIG_DATA_DIR")
 	if configDir == "" {
 		configDir = "config-data" // fall back to default directory
 	}
 
-	// check if the config data for the server exists, otherwise use default config data
-	fileName := fmt.Sprintf("%s/%s-config-data.json", configDir, serverName)
+	// check if the config data for the type exists, otherwise use default config data
+	fileName := fmt.Sprintf("%s/%s-config-data.json", configDir, configType)
 	if _, err := os.Stat(fileName); os.IsNotExist(err) {
-		fmt.Printf("Warning: Config for %s not found, using default-config-data.json\n", serverName)
+		fmt.Printf("Warning: Config for type %s not found, using default-config-data.json\n", configType)
 		fileName = fmt.Sprintf("%s/default-config-data.json", configDir)
 	}
 
