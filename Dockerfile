@@ -9,7 +9,7 @@ RUN go mod download
 
 # Copy full source and build static binary
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -trimpath -o tunerservice ./demos/tunerservice
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -trimpath -o tunerservice ./cmd/tuner
 
 # Runtime stage
 FROM alpine:3.20
