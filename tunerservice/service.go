@@ -96,6 +96,15 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 		Covariance:  covToSlice(lastResults.Covariance),
 		LastUpdated: time.Now(),
 	})
+	slog.Info("tuned parameters",
+		"model", model,
+		"accelerator", accelerator,
+		"alpha", lastResults.ServiceParms.Alpha,
+		"beta", lastResults.ServiceParms.Beta,
+		"gamma", lastResults.ServiceParms.Gamma,
+		"NIS", nisToStore,
+		"rejected", lastResults.ValidationFailed,
+	)
 	return nil
 }
 
