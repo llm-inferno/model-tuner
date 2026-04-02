@@ -59,5 +59,3 @@ require (
 	golang.org/x/text v0.30.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )
-
-replace github.com/llm-inferno/queue-analysis => /Users/tantawi/Projects/llm-inferno/queue-analysis
