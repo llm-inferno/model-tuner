@@ -55,6 +55,20 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 		return fmt.Errorf("no valid environments for %s/%s", model, accelerator)
 	}
 
+	for i, env := range envs {
+		slog.Info("replica environment",
+			"model", model,
+			"accelerator", accelerator,
+			"replica", i,
+			"arrivalRateRPM", env.Lambda,
+			"maxBatch", env.MaxBatchSize,
+			"avgInTokens", env.AvgInputTokens,
+			"avgOutTokens", env.AvgOutputTokens,
+			"avgTTFT", env.AvgTTFT,
+			"avgITL", env.AvgITL,
+		)
+	}
+
 	tuner, err := ts.createTuner(model, accelerator, envs[0])
 	if err != nil {
 		return fmt.Errorf("create tuner for %s/%s: %w", model, accelerator, err)
@@ -68,7 +82,11 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 			continue
 		}
 		if results.ValidationFailed {
-			slog.Debug("EKF update rejected", "model", model, "accelerator", accelerator, "NIS", results.NIS)
+			if results.NIS > 0 {
+				slog.Info("EKF update rejected: NIS gate", "model", model, "accelerator", accelerator, "NIS", results.NIS)
+			} else {
+				slog.Info("EKF update rejected: state validation", "model", model, "accelerator", accelerator)
+			}
 		}
 		lastResults = results
 	}

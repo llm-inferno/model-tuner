@@ -67,7 +67,7 @@ Each `ServerSpec` carries:
 |-------|-------------------------|
 | `Model` | group key |
 | `CurrentAlloc.Accelerator` | group key |
-| `CurrentAlloc.Load.ArrivalRate` | `Lambda` (RPM) |
+| `CurrentAlloc.Load.ArrivalRate` | `Lambda` (arrival rate, RPM) |
 | `CurrentAlloc.Load.AvgInTokens` | `AvgInputTokens` |
 | `CurrentAlloc.Load.AvgOutTokens` | `AvgOutputTokens` |
 | `CurrentAlloc.TTFTAverage` | `AvgTTFT` (ms) — observed |

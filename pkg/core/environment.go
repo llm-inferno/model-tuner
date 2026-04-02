@@ -88,7 +88,7 @@ func (e *EnvironmentPrefillDecode) GetObservations() *mat.VecDense {
 func (e *EnvironmentDecode) String() string {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "Environment: ")
-	fmt.Fprintf(&b, "rpm=%5.2f; avgOutTokens=%6.2f; batchSize=%6.2f; maxBatch=%d; avgWait=%10.6f; avgITL=%10.6f",
+	fmt.Fprintf(&b, "arrivalRateRPM=%5.2f; avgOutTokens=%6.2f; batchSize=%6.2f; maxBatch=%d; avgWait=%10.6f; avgITL=%10.6f",
 		e.Lambda, e.AvgOutputTokens, e.BatchSize, e.MaxBatchSize, e.AvgQueueTime, e.AvgITL)
 	return b.String()
 }
@@ -96,7 +96,7 @@ func (e *EnvironmentDecode) String() string {
 func (e *EnvironmentPrefillDecode) String() string {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "Environment: ")
-	fmt.Fprintf(&b, "rpm=%5.2f; avgInTokens=%6.2f; avgOutTokens=%6.2f; batchSize=%6.2f; maxBatch=%d; avgWait=%10.6f; avgTTFT=%10.6f; avgITL=%10.6f",
+	fmt.Fprintf(&b, "arrivalRateRPM=%5.2f; avgInTokens=%6.2f; avgOutTokens=%6.2f; batchSize=%6.2f; maxBatch=%d; avgWait=%10.6f; avgTTFT=%10.6f; avgITL=%10.6f",
 		e.Lambda, e.AvgInputTokens, e.AvgOutputTokens, e.BatchSize, e.MaxBatchSize,
 		e.AvgQueueTime, e.AvgTTFT, e.AvgITL)
 	return b.String()

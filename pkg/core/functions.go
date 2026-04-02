@@ -43,13 +43,15 @@ func NewQueueModelSystemFuncCreatorPrefillDecode(tuner *Tuner) *QueueModelSystem
 func (c *QueueModelSystemFuncCreatorPrefillDecode) Create() func(x *mat.VecDense) *mat.VecDense {
 	tuner := c.tuner
 	return func(x *mat.VecDense) *mat.VecDense {
+		zero := mat.NewVecDense(2, nil)
+
 		if !tuner.env.Valid() || x.Len() != 3 {
-			return nil
+			return zero
 		}
 
 		envData, ok := tuner.env.(*EnvironmentPrefillDecode)
 		if !ok {
-			return nil
+			return zero
 		}
 		maxBatchSize := envData.MaxBatchSize
 		avgInputTokens := envData.AvgInputTokens
@@ -76,14 +78,14 @@ func (c *QueueModelSystemFuncCreatorPrefillDecode) Create() func(x *mat.VecDense
 		}
 		queueAnalyzer, err := analyzer.NewLLMQueueAnalyzer(qConfig, requestSize)
 		if err != nil {
-			return nil
+			return zero
 		}
 
-		// request per msec
-		rpm := envData.Lambda
-		metrics, err := queueAnalyzer.Analyze(rpm / 60)
+		// convert arrival rate from req/min to req/sec
+		arrivalRateRPM := envData.Lambda
+		metrics, err := queueAnalyzer.Analyze(arrivalRateRPM / 60)
 		if err != nil {
-			return nil
+			return zero
 		}
 
 		// get metrics from queue analyzer
@@ -130,9 +132,9 @@ func (c *QueueModelSystemFuncCreatorDecode) Create() func(x *mat.VecDense) *mat.
 			return nil
 		}
 
-		// request per msec
-		rpm := envData.Lambda
-		metrics, err := queueAnalyzer.Analyze(rpm / 60)
+		// convert arrival rate from req/min to req/sec
+		arrivalRateRPM := envData.Lambda
+		metrics, err := queueAnalyzer.Analyze(arrivalRateRPM / 60)
 		if err != nil {
 			return nil
 		}
