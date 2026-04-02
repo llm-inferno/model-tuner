@@ -30,7 +30,7 @@ Accepts per-replica `ServerSpec` metrics from the control-loop Collector, runs E
       "MaxBatch": 256,
       "TTFTAverage": 120.0,
       "ITLAverage": 15.0,
-      "Load": { "ArrivalRate": 30.0, "AvgInTokens": 512, "AvgOutTokens": 128 }
+      "Load": { "ArrivalRate": 30.0, "Throughput": 30.0, "AvgInTokens": 512, "AvgOutTokens": 128 }
     },
     "MaxBatchSize": 256
   }

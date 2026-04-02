@@ -10,30 +10,30 @@ data:
     {
         "filterData": {
             "gammaFactor": 1.0,
-            "errorLevel": 0.05,
+            "errorLevel": 0.5,
             "tPercentile": 1.96
         },
         "modelData": {
             "initState": [
-                10.0,
-                0.02,
-                0.0001
+                5.0,
+                0.05,
+                0.00005
             ],
             "percentChange": [
-                0.25,
-                0.25,
-                0.25
+                0.15,
+                0.15,
+                0.15
             ],
             "boundedState": true,
             "minState": [
-                4.0,
-                0.002,
-                0.00001
+                0.05,
+                0.0005,
+                0.0000005
             ],
             "maxState": [
-                100,
-                0.2,
-                0.001
+                500.0,
+                5.0,
+                0.005
             ],
             "expectedObservations": [
                 200.0,

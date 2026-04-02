@@ -68,6 +68,7 @@ Each `ServerSpec` carries:
 | `Model` | group key |
 | `CurrentAlloc.Accelerator` | group key |
 | `CurrentAlloc.Load.ArrivalRate` | `Lambda` (arrival rate, RPM) |
+| `CurrentAlloc.Load.Throughput` | not used directly; available for overload detection (`ArrivalRate > Throughput`) |
 | `CurrentAlloc.Load.AvgInTokens` | `AvgInputTokens` |
 | `CurrentAlloc.Load.AvgOutTokens` | `AvgOutputTokens` |
 | `CurrentAlloc.TTFTAverage` | `AvgTTFT` (ms) — observed |
