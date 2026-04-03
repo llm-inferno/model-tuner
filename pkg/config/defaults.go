@@ -27,3 +27,8 @@ const DefaultInitStateFactor = float64(10.0)
 // DefaultInitStateMinEpsilon is the lower floor applied to MinState to avoid zero or
 // near-zero lower bounds for parameters that are physically positive but may be very small.
 const DefaultInitStateMinEpsilon = float64(1e-9)
+
+// DefaultWarmUpCycles is the number of accepted EKF updates during which the NIS gate is
+// disabled. During warm-up the filter converges from its initial state; NIS rejection of
+// these early updates would prevent convergence. The positivity gate remains active.
+const DefaultWarmUpCycles = 5

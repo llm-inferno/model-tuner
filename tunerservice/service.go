@@ -16,13 +16,15 @@ import (
 // TunerService groups replica metrics by (model, accelerator), runs EKF tuning per group,
 // maintains a ParameterStore for state continuity, and returns updated ModelData.
 type TunerService struct {
-	paramStore *ParameterStore
+	paramStore   *ParameterStore
+	warmUpCycles int
 }
 
 // NewTunerService creates a TunerService with an empty ParameterStore.
-func NewTunerService() *TunerService {
+func NewTunerService(warmUpCycles int) *TunerService {
 	return &TunerService{
-		paramStore: NewParameterStore(),
+		paramStore:   NewParameterStore(),
+		warmUpCycles: warmUpCycles,
 	}
 }
 
@@ -75,9 +77,15 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 		return fmt.Errorf("create tuner for %s/%s: %w", model, accelerator, err)
 	}
 
+	updateCount := 0
+	if existing := ts.paramStore.Get(model, accelerator); existing != nil {
+		updateCount = existing.UpdateCount
+	}
+	skipNIS := updateCount < ts.warmUpCycles
+
 	var accepted *core.TunedResults
 	for _, env := range envs {
-		results, runErr := tuner.RunWithValidation(env)
+		results, runErr := tuner.RunWithValidation(env, skipNIS)
 		if runErr != nil {
 			slog.Warn("EKF run error", "model", model, "accelerator", accelerator, "err", runErr)
 			continue
@@ -102,6 +110,7 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 		Beta:        accepted.ServiceParms.Beta,
 		Gamma:       accepted.ServiceParms.Gamma,
 		NIS:         accepted.NIS,
+		UpdateCount: updateCount + 1,
 		Covariance:  covToSlice(accepted.Covariance),
 		LastUpdated: time.Now(),
 	})
@@ -112,6 +121,8 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 		"beta", accepted.ServiceParms.Beta,
 		"gamma", accepted.ServiceParms.Gamma,
 		"NIS", accepted.NIS,
+		"updateCount", updateCount+1,
+		"warmUp", skipNIS,
 	)
 	return nil
 }

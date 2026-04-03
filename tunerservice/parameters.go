@@ -14,6 +14,7 @@ type LearnedParameters struct {
 	Beta        float32
 	Gamma       float32
 	NIS         float64
+	UpdateCount int         // number of accepted EKF updates; used to track warm-up progress
 	Covariance  [][]float64 // nStates x nStates covariance matrix
 	LastUpdated time.Time
 }

@@ -131,7 +131,8 @@ func (t *Tuner) GetParams() *mat.VecDense {
 
 // RunWithValidation runs one EKF predict+update cycle with NIS validation and rollback on failure.
 // On validation failure the filter is rolled back to its previous state and TunedResults.ValidationFailed is set.
-func (t *Tuner) RunWithValidation(env Environment) (*TunedResults, error) {
+// If skipNIS is true, the NIS gate is bypassed (useful during warm-up); the state positivity check always runs.
+func (t *Tuner) RunWithValidation(env Environment, skipNIS bool) (*TunedResults, error) {
 	t.UpdateEnvironment(env)
 
 	stasher, err := NewStasher(t.filter)
@@ -163,25 +164,32 @@ func (t *Tuner) RunWithValidation(env Environment) (*TunedResults, error) {
 		return prev, nil
 	}
 
-	nis, valErr := t.computeNIS()
-	if valErr != nil {
-		if err := stasher.UnStash(); err != nil {
-			return nil, fmt.Errorf("failed to unstash after validation failure: %w", err)
+	if !skipNIS {
+		nis, valErr := t.computeNIS()
+		if valErr != nil {
+			if err := stasher.UnStash(); err != nil {
+				return nil, fmt.Errorf("failed to unstash after validation failure: %w", err)
+			}
+			prev, err := t.extractTunedResults()
+			if err != nil {
+				return nil, fmt.Errorf("validation failed and previous state extraction failed: %w", err)
+			}
+			prev.ValidationFailed = true
+			prev.NIS = nis
+			return prev, nil
 		}
-		prev, err := t.extractTunedResults()
+		results, err := t.extractTunedResults()
 		if err != nil {
-			return nil, fmt.Errorf("validation failed and previous state extraction failed: %w", err)
+			return nil, err
 		}
-		prev.ValidationFailed = true
-		prev.NIS = nis
-		return prev, nil
+		results.NIS = nis
+		return results, nil
 	}
 
 	results, err := t.extractTunedResults()
 	if err != nil {
 		return nil, err
 	}
-	results.NIS = nis
 	return results, nil
 }
 

@@ -15,6 +15,11 @@ const (
 	DefaultTunerPort = "8081"
 )
 
+// Environment variable names and defaults for tuner behaviour.
+const (
+	WarmUpCyclesEnvName = "TUNER_WARM_UP_CYCLES"
+)
+
 // Default field values used when the ParameterStore has a model/accelerator entry
 // that is not present in the Controller's current ModelData.
 const (

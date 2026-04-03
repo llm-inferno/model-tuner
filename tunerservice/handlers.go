@@ -52,6 +52,7 @@ func (ts *TunerServer) handleGetParams(c *gin.Context) {
 		"beta":        params.Beta,
 		"gamma":       params.Gamma,
 		"nis":         params.NIS,
+		"updateCount": params.UpdateCount,
 		"lastUpdated": params.LastUpdated,
 	})
 }
