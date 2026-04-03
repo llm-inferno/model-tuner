@@ -57,6 +57,13 @@ func (ts *TunerServer) handleGetParams(c *gin.Context) {
 	})
 }
 
+// GET /warmup
+// Response: {"warmingUp": bool} — true if any known (model, accelerator) pair still has
+// UpdateCount < warmUpCycles; false once all pairs have graduated or warmUpCycles is zero.
+func (ts *TunerServer) handleWarmUp(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"warmingUp": ts.service.IsWarmingUp()})
+}
+
 // POST /merge
 // Request body: config.ModelData (the Controller's current ModelData)
 // Response:     config.ModelData with PerfParms overlaid from the ParameterStore;

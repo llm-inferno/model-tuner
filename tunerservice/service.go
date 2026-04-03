@@ -218,6 +218,21 @@ func (ts *TunerService) GetParams(model, accelerator string) *LearnedParameters 
 	return ts.paramStore.Get(model, accelerator)
 }
 
+// IsWarmingUp returns true if the tuner has not yet completed warmUpCycles accepted EKF
+// updates for at least one known (model, accelerator) pair.
+// Returns false when warmUpCycles is zero or when all pairs have graduated.
+func (ts *TunerService) IsWarmingUp() bool {
+	if ts.warmUpCycles == 0 {
+		return false
+	}
+	for _, params := range ts.paramStore.GetAll() {
+		if params.UpdateCount < ts.warmUpCycles {
+			return true
+		}
+	}
+	return false
+}
+
 // Merge accepts the Controller's current ModelData and returns it with PerfParms overlaid
 // from the ParameterStore for any matching (name, accelerator) pairs. Entries in the
 // ParameterStore that have no match in the input are appended with default non-parameter fields.
