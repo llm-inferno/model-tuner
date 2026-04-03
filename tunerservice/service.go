@@ -3,6 +3,7 @@ package tunerservice
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 
 	optconfig "github.com/llm-inferno/optimizer-light/pkg/config"
@@ -74,7 +75,7 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 		return fmt.Errorf("create tuner for %s/%s: %w", model, accelerator, err)
 	}
 
-	var lastResults *core.TunedResults
+	var accepted *core.TunedResults
 	for _, env := range envs {
 		results, runErr := tuner.RunWithValidation(env)
 		if runErr != nil {
@@ -87,41 +88,30 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 			} else {
 				slog.Info("EKF update rejected: state validation", "model", model, "accelerator", accelerator)
 			}
+			continue
 		}
-		lastResults = results
+		accepted = results
 	}
 
-	if lastResults == nil || lastResults.ServiceParms == nil {
-		return fmt.Errorf("no valid results for %s/%s", model, accelerator)
-	}
-
-	// Preserve the previously stored NIS when the last update was rolled back, so the
-	// stored NIS always reflects a valid (accepted) filter update, not a rejected outlier.
-	nisToStore := lastResults.NIS
-	if lastResults.ValidationFailed {
-		if prev := ts.paramStore.Get(model, accelerator); prev != nil {
-			nisToStore = prev.NIS
-		} else {
-			nisToStore = 0
-		}
+	if accepted == nil {
+		return fmt.Errorf("no accepted results for %s/%s", model, accelerator)
 	}
 
 	ts.paramStore.Set(model, accelerator, &LearnedParameters{
-		Alpha:       lastResults.ServiceParms.Alpha,
-		Beta:        lastResults.ServiceParms.Beta,
-		Gamma:       lastResults.ServiceParms.Gamma,
-		NIS:         nisToStore,
-		Covariance:  covToSlice(lastResults.Covariance),
+		Alpha:       accepted.ServiceParms.Alpha,
+		Beta:        accepted.ServiceParms.Beta,
+		Gamma:       accepted.ServiceParms.Gamma,
+		NIS:         accepted.NIS,
+		Covariance:  covToSlice(accepted.Covariance),
 		LastUpdated: time.Now(),
 	})
 	slog.Info("tuned parameters",
 		"model", model,
 		"accelerator", accelerator,
-		"alpha", lastResults.ServiceParms.Alpha,
-		"beta", lastResults.ServiceParms.Beta,
-		"gamma", lastResults.ServiceParms.Gamma,
-		"NIS", nisToStore,
-		"rejected", lastResults.ValidationFailed,
+		"alpha", accepted.ServiceParms.Alpha,
+		"beta", accepted.ServiceParms.Beta,
+		"gamma", accepted.ServiceParms.Gamma,
+		"NIS", accepted.NIS,
 	)
 	return nil
 }
@@ -141,11 +131,11 @@ func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.En
 
 	if existing != nil {
 		// Restore previous alpha/beta/gamma as initial state
-		configData.ModelData.InitState = []float64{
+		setInitState(&configData.ModelData, []float64{
 			float64(existing.Alpha),
 			float64(existing.Beta),
 			float64(existing.Gamma),
-		}
+		})
 		if cov := existing.CovarianceMatrix(); cov != nil {
 			tuner, err := core.NewTunerWithCovariance(configData, firstEnv, cov)
 			if err != nil {
@@ -159,7 +149,7 @@ func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.En
 	} else {
 		// Guess initial state from observations if possible
 		if initState := guessInitState(firstEnv); initState != nil {
-			configData.ModelData.InitState = initState
+			setInitState(&configData.ModelData, initState)
 		}
 	}
 
@@ -171,6 +161,19 @@ func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.En
 		return nil, err
 	}
 	return tuner, nil
+}
+
+// setInitState sets InitState and recomputes MinState/MaxState using a log-symmetric factor:
+// Min = max(init[i]/factor, epsilon), Max = init[i]*factor.
+// This keeps the three fields consistent whenever the initial state changes.
+func setInitState(md *config.ModelData, initState []float64) {
+	md.InitState = initState
+	md.MinState = make([]float64, len(initState))
+	md.MaxState = make([]float64, len(initState))
+	for i, v := range initState {
+		md.MinState[i] = math.Max(v/config.DefaultInitStateFactor, config.DefaultInitStateMinEpsilon)
+		md.MaxState[i] = v * config.DefaultInitStateFactor
+	}
 }
 
 // buildModelData constructs ModelData from the ParameterStore for all observed model/accelerator groups.

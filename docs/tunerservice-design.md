@@ -112,7 +112,8 @@ One entry per `(model, accelerator)` group seen in the input.
 On each call, `createTuner()` checks the `ParameterStore` for previously learned
 parameters. If found:
 
-- The stored `alpha/beta/gamma` are used as `InitState` (warm start).
+- The stored `alpha/beta/gamma` are used as `InitState` (warm start), and
+  `MinState`/`MaxState` are recomputed from `InitState` via `setInitState()`.
 - The stored covariance matrix `P` is restored via `core.NewTunerWithCovariance()`,
   so the filter's confidence reflects accumulated learning rather than starting over.
 
@@ -133,7 +134,8 @@ Steps:
 4. `beta  = (beta+gamma) - gamma`
 
 If any derived parameter is ≤ 0, the function returns nil and the config file's
-`InitState` defaults are used instead.
+`InitState` defaults are used instead. In both cases `MinState`/`MaxState` are
+recomputed from the final `InitState` via `setInitState()`.
 
 ### 3. NIS validation (`computeNIS`)
 
@@ -177,7 +179,8 @@ Key `ModelData` fields used:
 |-------|--------|
 | `initState` | Starting `[alpha, beta, gamma]` (overridden by prior params or guessInitState) |
 | `percentChange` | Process noise scaling per state dimension |
-| `boundedState` / `minState` / `maxState` | Clamp state after each update |
+| `boundedState` | Enable state clamping after each update |
+| `minState` / `maxState` | Recomputed dynamically from `InitState` via `setInitState()`: `Min = max(Init/10, 1e-9)`, `Max = Init*10` — config-file values are overwritten when `InitState` changes |
 | `expectedObservations` | Scale measurement noise covariance `R` |
 
 ---
