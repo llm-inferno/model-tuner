@@ -18,14 +18,30 @@ import (
 type TunerService struct {
 	paramStore   *ParameterStore
 	warmUpCycles int
+	estimators   map[string]*InitEstimator
+	initObs      int
+	holdBack     bool
 }
 
 // NewTunerService creates a TunerService with an empty ParameterStore.
-func NewTunerService(warmUpCycles int) *TunerService {
+func NewTunerService(warmUpCycles, initObs int, holdBack bool) *TunerService {
 	return &TunerService{
 		paramStore:   NewParameterStore(),
 		warmUpCycles: warmUpCycles,
+		estimators:   make(map[string]*InitEstimator),
+		initObs:      initObs,
+		holdBack:     holdBack,
 	}
+}
+
+// estimatorFor returns the InitEstimator for the given key, creating it if needed.
+func (ts *TunerService) estimatorFor(key string) *InitEstimator {
+	if ie, ok := ts.estimators[key]; ok {
+		return ie
+	}
+	ie := NewInitEstimator(ts.initObs, ts.holdBack)
+	ts.estimators[key] = ie
+	return ie
 }
 
 // Tune accepts per-replica ServerSpecs from the control-loop Collector, runs EKF tuning for each
@@ -72,7 +88,29 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 		)
 	}
 
-	tuner, err := ts.createTuner(model, accelerator, envs[0])
+	key := makeKey(model, accelerator)
+	estimator := ts.estimatorFor(key)
+	estimator.AddObservation(envs[0])
+
+	if !estimator.IsReady() {
+		slog.Info("collecting initial observations",
+			"model", model, "accelerator", accelerator,
+			"count", len(estimator.observations), "minObs", estimator.minObs)
+		return fmt.Errorf("collecting initial observations for %s/%s (%d/%d)",
+			model, accelerator, len(estimator.observations), estimator.minObs)
+	}
+
+	// Fit once when we have no prior paramStore entry (first EKF initialisation).
+	var fitInitState []float64
+	if ts.paramStore.Get(model, accelerator) == nil {
+		var fitErr error
+		fitInitState, fitErr = estimator.Fit()
+		if fitErr != nil {
+			slog.Warn("InitEstimator Fit failed, EKF will use guessInitState", "err", fitErr)
+		}
+	}
+
+	tuner, err := ts.createTuner(model, accelerator, envs[0], fitInitState)
 	if err != nil {
 		return fmt.Errorf("create tuner for %s/%s: %w", model, accelerator, err)
 	}
@@ -129,7 +167,7 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 
 // createTuner creates a Tuner for the given model/accelerator, restoring state from the
 // ParameterStore if available, or guessing initial state from the first environment.
-func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.EnvironmentPrefillDecode) (*core.Tuner, error) {
+func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.EnvironmentPrefillDecode, fitInitState []float64) (*core.Tuner, error) {
 	existing := ts.paramStore.Get(model, accelerator)
 
 	var configData *config.ConfigData
@@ -158,8 +196,10 @@ func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.En
 			return tuner, nil
 		}
 	} else {
-		// Guess initial state from observations if possible
-		if initState := guessInitState(firstEnv); initState != nil {
+		// Use fitted initial state if available, otherwise guess from the first observation.
+		if fitInitState != nil {
+			setInitState(&configData.ModelData, fitInitState)
+		} else if initState := guessInitState(firstEnv); initState != nil {
 			setInitState(&configData.ModelData, initState)
 		}
 	}
@@ -222,6 +262,12 @@ func (ts *TunerService) GetParams(model, accelerator string) *LearnedParameters 
 // updates for at least one known (model, accelerator) pair.
 // Returns false when warmUpCycles is zero or when all pairs have graduated.
 func (ts *TunerService) IsWarmingUp() bool {
+	// Check estimators in collection phase (holdBack=true only)
+	for _, ie := range ts.estimators {
+		if !ie.IsReady() && ie.HoldBack() {
+			return true
+		}
+	}
 	if ts.warmUpCycles == 0 {
 		return false
 	}

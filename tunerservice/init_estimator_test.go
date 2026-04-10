@@ -158,3 +158,21 @@ func TestInitEstimator_Fit_ParameterRecovery(t *testing.T) {
 	checkParam("beta", fitted[1], float64(trueBeta))
 	checkParam("gamma", fitted[2], float64(trueGamma))
 }
+
+func TestTunerService_IsWarmingUp_DuringCollection(t *testing.T) {
+	ts := NewTunerService(3, 3, true)
+	key := makeKey("mymodel", "myacc")
+	ts.estimators[key] = NewInitEstimator(3, true)
+	if !ts.IsWarmingUp() {
+		t.Fatal("expected IsWarmingUp=true when estimator not ready and holdBack=true")
+	}
+}
+
+func TestTunerService_IsWarmingUp_HoldBackFalse(t *testing.T) {
+	ts := NewTunerService(3, 3, false)
+	key := makeKey("mymodel", "myacc")
+	ts.estimators[key] = NewInitEstimator(3, false)
+	if ts.IsWarmingUp() {
+		t.Fatal("expected IsWarmingUp=false when holdBack=false")
+	}
+}
