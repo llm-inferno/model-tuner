@@ -38,12 +38,15 @@ func (fo *fitObservation) toEnv() *core.EnvironmentPrefillDecode {
 // InitEstimator accumulates observations before the EKF starts and fits initial parameters.
 type InitEstimator struct {
 	observations []fitObservation
-	minObs       int
+	minObs       int  // minimum K before Fit(); K<3 may underconstraint the 3-param fit
 	holdBack     bool
 }
 
 // NewInitEstimator creates an InitEstimator with the given minimum observation count and hold-back flag.
 func NewInitEstimator(minObs int, holdBack bool) *InitEstimator {
+	if minObs < 1 {
+		minObs = 1
+	}
 	return &InitEstimator{
 		minObs:   minObs,
 		holdBack: holdBack,

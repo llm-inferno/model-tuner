@@ -90,6 +90,8 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 
 	key := makeKey(model, accelerator)
 	estimator := ts.estimatorFor(key)
+	// Use only envs[0] to collect one observation per cycle; additional replica envs
+	// within the same cycle are correlated (same load instant) and add little diversity.
 	estimator.AddObservation(envs[0])
 
 	if !estimator.IsReady() {
