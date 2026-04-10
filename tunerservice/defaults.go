@@ -27,3 +27,12 @@ const (
 	DefaultMaxBatchSize = 256
 	DefaultAtTokens     = 1024
 )
+
+// Environment variable names and defaults for the InitEstimator.
+const (
+	InitObsEnvName      = "TUNER_INIT_OBS"
+	InitHoldBackEnvName = "TUNER_INIT_HOLD_BACK"
+
+	DefaultInitObs      = 5
+	DefaultInitHoldBack = true
+)
