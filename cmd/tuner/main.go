@@ -27,10 +27,26 @@ func main() {
 		}
 	}
 
-	service := tunerservice.NewTunerService(warmUpCycles)
+	initObs := tunerservice.DefaultInitObs
+	if v := os.Getenv(tunerservice.InitObsEnvName); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			initObs = n
+		}
+	}
+
+	holdBack := tunerservice.DefaultInitHoldBack
+	if v := os.Getenv(tunerservice.InitHoldBackEnvName); v != "" {
+		holdBack = v == "true" || v == "1"
+	}
+
+	service := tunerservice.NewTunerService(warmUpCycles, initObs, holdBack)
 	server := tunerservice.NewTunerServer(service)
 
-	slog.Info("Starting TunerService", "host", host, "port", port, "warmUpCycles", warmUpCycles)
+	slog.Info("Starting TunerService",
+		"host", host, "port", port,
+		"warmUpCycles", warmUpCycles,
+		"initObs", initObs,
+		"holdBack", holdBack)
 	if err := server.Run(host, port); err != nil {
 		log.Fatalf("server error: %v", err)
 	}

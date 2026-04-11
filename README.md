@@ -50,8 +50,11 @@ The `tunerservice` package is a passive HTTP server designed for integration wit
 - `POST /tune` — accepts `[]config.ServerSpec`, runs EKF tuning, stores results in `ParameterStore`
 - `POST /merge` — accepts current `config.ModelData`, returns it with tuned `PerfParms` overlaid from `ParameterStore`
 - `GET /getparams?model=<name>&accelerator=<acc>` — retrieves the last stored parameters for a pair
+- `GET /warmup` — returns whether any pair is still in warm-up (collection or EKF warm-up phase)
 
-See [`tunerservice/README.md`](tunerservice/README.md) for full API docs, EKF features, and configuration.
+**Initial parameter estimation** — before the EKF starts for a new `(model, accelerator)` pair, the service accumulates `TUNER_INIT_OBS` (default 5) observations across control cycles, then runs a Nelder-Mead fit to find initial (α, β, γ) that jointly explain all observations. This replaces the previous single-observation zero-load algebraic inversion, which breaks down at moderate-to-high traffic levels. During collection, `GET /warmup` returns `true` (configurable via `TUNER_INIT_HOLD_BACK`) so the controller can defer optimization until parameters are ready.
+
+See [`tunerservice/README.md`](tunerservice/README.md) for full API docs, EKF features, warm-up phases, and configuration.
 
 ## Running the Tuner Service
 
