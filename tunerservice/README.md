@@ -111,6 +111,22 @@ Each `(model, accelerator)` pair goes through three phases before reaching norma
 
 Set `TUNER_INIT_HOLD_BACK=false` to let the controller proceed with static model data during collection instead of holding back.
 
+### Interaction between TUNER_INIT_OBS and TUNER_WARM_UP_CYCLES
+
+The two variables govern **sequential** phases — there is no overlap or interference:
+
+- During collection, the EKF never runs and `paramStore` stays empty, so the EKF warm-up check (`UpdateCount < TUNER_WARM_UP_CYCLES`) never fires. The hold-back signal during collection comes entirely from the estimator check.
+- Once collection completes and `Fit()` runs, the EKF starts and `paramStore` gains entries. The hold-back signal then transitions to the EKF warm-up check. The estimator check no longer fires (estimator is ready).
+- `GET /warmup` returns `true` across both phases, presenting a single "not ready" signal to the controller.
+
+**Total controller hold-back** when `TUNER_INIT_HOLD_BACK=true` is therefore:
+
+```
+hold-back cycles = TUNER_INIT_OBS + TUNER_WARM_UP_CYCLES  (defaults: 5 + 5 = 10)
+```
+
+At a 60-second control period this is 10 minutes before the controller first invokes the optimizer with tuned parameters. Lower one or both values for faster startup if the operating conditions are well-understood.
+
 ## Multi-Replica Tuning
 
 Incoming `ReplicaSpecs` are grouped by `(Model, Accelerator)`. Within each group, one EKF predict+update cycle is run per replica with active traffic (`ArrivalRate > 0`), giving the filter multiple independent observations per tuning call.
