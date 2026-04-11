@@ -40,6 +40,7 @@ type InitEstimator struct {
 	observations []fitObservation
 	minObs       int  // minimum K before Fit(); K<3 may underconstraint the 3-param fit
 	holdBack     bool
+	fitDone      bool // set after the first Fit() call to prevent repeated fitting
 }
 
 // NewInitEstimator creates an InitEstimator with the given minimum observation count and hold-back flag.
@@ -78,6 +79,15 @@ func (ie *InitEstimator) HoldBack() bool {
 	return ie.holdBack
 }
 
+// ObsCount returns the number of observations accumulated so far.
+func (ie *InitEstimator) ObsCount() int { return len(ie.observations) }
+
+// MinObs returns the minimum number of observations required before Fit() can run.
+func (ie *InitEstimator) MinObs() int { return ie.minObs }
+
+// FitDone returns true if Fit() has already been called (regardless of success or failure).
+func (ie *InitEstimator) FitDone() bool { return ie.fitDone }
+
 // Fit runs Nelder-Mead minimisation over all accumulated observations to find the
 // (alpha, beta, gamma) that best explains all K observations jointly via the full
 // queueing model. Returns [alpha, beta, gamma] or an error.
@@ -94,14 +104,31 @@ func (ie *InitEstimator) Fit() ([]float64, error) {
 	}
 
 	problem := optimize.Problem{Func: ie.objective}
+	// 500 evaluations bounds worst-case latency (~30ms for K=5 obs) while allowing convergence
+	// for a 3-parameter problem. Nelder-Mead typically terminates via FunctionEvaluationLimit.
 	settings := &optimize.Settings{FuncEvaluations: 500}
 	result, err := optimize.Minimize(problem, x0, settings, &optimize.NelderMead{})
-	if err != nil && result == nil {
-		slog.Warn("InitEstimator: Nelder-Mead failed, using guessInitState fallback", "err", err)
+	ie.fitDone = true
+	if err != nil {
+		// Genuine pre-flight failure (ill-formed problem or settings); result may be nil.
+		slog.Warn("InitEstimator: Nelder-Mead pre-flight error, using guessInitState fallback", "err", err)
 		if fallback := guessInitState(ie.observations[0].toEnv()); fallback != nil {
 			return fallback, nil
 		}
 		return nil, fmt.Errorf("Nelder-Mead failed and guessInitState returned nil: %w", err)
+	}
+
+	// gonum always returns a non-nil result when err==nil; verify termination was acceptable.
+	switch result.Status {
+	case optimize.Success, optimize.FunctionConvergence, optimize.FunctionEvaluationLimit:
+		// acceptable termination
+	default:
+		slog.Warn("InitEstimator: unexpected Nelder-Mead termination status, using guessInitState fallback",
+			"status", result.Status)
+		if fallback := guessInitState(ie.observations[0].toEnv()); fallback != nil {
+			return fallback, nil
+		}
+		return nil, fmt.Errorf("Nelder-Mead unexpected status %v and guessInitState returned nil", result.Status)
 	}
 
 	x := result.X

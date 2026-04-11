@@ -97,14 +97,15 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 	if !estimator.IsReady() {
 		slog.Info("collecting initial observations",
 			"model", model, "accelerator", accelerator,
-			"count", len(estimator.observations), "minObs", estimator.minObs)
+			"count", estimator.ObsCount(), "minObs", estimator.MinObs())
 		return fmt.Errorf("collecting initial observations for %s/%s (%d/%d)",
-			model, accelerator, len(estimator.observations), estimator.minObs)
+			model, accelerator, estimator.ObsCount(), estimator.MinObs())
 	}
 
-	// Fit once when we have no prior paramStore entry (first EKF initialisation).
+	// Fit once: run Nelder-Mead on the first cycle after collection completes.
+	// FitDone() prevents re-running if EKF updates are persistently rejected.
 	var fitInitState []float64
-	if ts.paramStore.Get(model, accelerator) == nil {
+	if ts.paramStore.Get(model, accelerator) == nil && !estimator.FitDone() {
 		var fitErr error
 		fitInitState, fitErr = estimator.Fit()
 		if fitErr != nil {
