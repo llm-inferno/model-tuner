@@ -21,7 +21,7 @@ go run ./demos/benchmark
 go run ./demos/tunerservice
 ```
 
-There are no unit tests (`*_test.go` files). Validation is done by running demo programs and inspecting their CSV/console output.
+Unit tests exist for `tunerservice/` (`go test ./tunerservice/...`). Demo programs in `demos/` are used for broader validation by running them and inspecting their CSV/console output.
 
 ## Architecture
 
@@ -72,6 +72,7 @@ The primary deployment is as a sidecar container in the `inferno` pod (see `gith
 |---|---|---|
 | `CONFIG_DATA_DIR` | Directory with JSON config files | `config-data` (`/etc/tuner/config` in inferno pod) |
 | `TUNER_HOST` / `TUNER_PORT` | Tuner REST server address | `localhost:8081` (`localhost:3304` in inferno pod) |
+| `TUNER_WARM_UP_CYCLES` | Number of accepted EKF updates during which the NIS gate is disabled | `5` |
 | `TUNER_INIT_OBS` | Number of observations to collect before fitting initial EKF parameters via Nelder-Mead | `5` |
 | `TUNER_INIT_HOLD_BACK` | If `true`, report `warmingUp=true` during collection (controller skips optimize+actuate). If `false`, controller proceeds with static model-data during collection. | `true` |
 | `COLLECTOR_HOST` / `COLLECTOR_PORT` | Prometheus collector address | — |
