@@ -65,6 +65,22 @@ Returns the most recently stored parameters for a specific model/accelerator pai
 }
 ```
 
+### `GET /warmup`
+
+Returns whether the tuner is still in a warm-up phase (collection or EKF warm-up) for any known `(model, accelerator)` pair. The control-loop Controller polls this endpoint each cycle to decide whether to skip optimize+actuate.
+
+**Response:**
+
+```json
+{ "warmingUp": true }
+```
+
+Returns `true` if:
+- any pair is still collecting initial observations (`TUNER_INIT_HOLD_BACK=true` and fewer than `TUNER_INIT_OBS` observations accumulated), or
+- any pair has fewer than `TUNER_WARM_UP_CYCLES` accepted EKF updates (NIS gate is disabled during this window).
+
+Returns `false` once all pairs have graduated to normal operation, or if `TUNER_WARM_UP_CYCLES=0`.
+
 ## Control-Loop Integration
 
 Intended usage from the control-loop `Controller`:
@@ -79,9 +95,21 @@ Intended usage from the control-loop `Controller`:
 
 **State continuity** — previously tuned alpha/beta/gamma and their covariance matrix are restored at the start of each tuning cycle, so the filter converges faster over time rather than reinitializing from scratch.
 
-**Initial state guessing** — on first observation, alpha/beta/gamma are derived algebraically from observed TTFT and ITL using the paper's queueing model equations, providing a warm start instead of cold defaults.
+**Initial parameter estimation** — on first use of a `(model, accelerator)` pair, the service runs a multi-observation Nelder-Mead fit before starting the EKF. It accumulates `TUNER_INIT_OBS` (default 5) operating-point snapshots across control cycles, then minimises mean squared error in TTFT and ITL across all observations jointly to find (α, β, γ) that best explain all of them. This approach is robust at any traffic level; a single-observation zero-load inversion (the previous approach) inflates α at moderate-to-high utilization where the light-traffic assumption breaks down. Token-count variation across observations resolves the three-parameter identifiability problem. If the Nelder-Mead fit fails or returns non-positive parameters, the service falls back to the single-observation algebraic inversion.
 
 **NIS validation** — after each EKF update, the Normalized Innovation Squared (NIS = yᵀ S⁻¹ y) is checked against a chi-squared threshold (7.378 for 2 DOF at 97.5%). Updates that exceed the threshold are rejected and the filter is rolled back, preventing parameter divergence on outlier observations.
+
+## Warm-up Phases
+
+Each `(model, accelerator)` pair goes through three phases before reaching normal operation:
+
+| Phase | Duration | Behavior |
+|---|---|---|
+| **Collection** | `TUNER_INIT_OBS` cycles (default 5) | Observations accumulated; `GET /warmup` returns `true` if `TUNER_INIT_HOLD_BACK=true`; controller skips optimize+actuate |
+| **EKF warm-up** | `TUNER_WARM_UP_CYCLES` cycles (default 5) | EKF runs from Nelder-Mead fit result with NIS gate disabled; `GET /warmup` returns `true` |
+| **Normal** | ongoing | NIS gate active; parameters tracked continuously; `GET /warmup` returns `false` |
+
+Set `TUNER_INIT_HOLD_BACK=false` to let the controller proceed with static model data during collection instead of holding back.
 
 ## Multi-Replica Tuning
 
@@ -96,6 +124,9 @@ Filter and model parameters are loaded from `default-config-data.json` in the di
 | `CONFIG_DATA_DIR` | Directory with JSON config files | `config-data` |
 | `TUNER_HOST` | Server listen address | `localhost` |
 | `TUNER_PORT` | Server listen port | `8081` |
+| `TUNER_WARM_UP_CYCLES` | Accepted EKF updates during which the NIS gate is disabled | `5` |
+| `TUNER_INIT_OBS` | Observations to accumulate before running the Nelder-Mead initial parameter fit; set to `1` to revert to single-observation algebraic inversion | `5` |
+| `TUNER_INIT_HOLD_BACK` | If `true`, report `warmingUp=true` during collection so the controller skips optimize+actuate; if `false`, controller proceeds with static model data | `true` |
 
 ## Running the Demo
 
