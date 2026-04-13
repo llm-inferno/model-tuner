@@ -103,6 +103,20 @@ func (ie *InitEstimator) Fit() ([]float64, error) {
 		x0 = []float64{5.0, 0.05, 0.0005}
 	}
 
+	result, err := ie.fitWithX0(x0)
+	ie.fitDone = true
+	return result, err
+}
+
+// fitWithX0 runs the Nelder-Mead optimisation starting from the given x0.
+// x0 must be positive (all values > 0); it is used as the variable scale so
+// the optimizer always sees O(1) quantities regardless of parameter magnitude.
+// Requires at least one observation to have been added.
+func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
+	if len(ie.observations) == 0 {
+		return nil, fmt.Errorf("no observations to fit")
+	}
+
 	// Scale variables by x0 so the optimizer sees O(1) quantities.
 	// Nelder-Mead builds its initial simplex with a fixed absolute offset (SimplexSize=0.05)
 	// per dimension. Without scaling, gamma (~0.00005) gets a 100,000% perturbation while
@@ -126,7 +140,6 @@ func (ie *InitEstimator) Fit() ([]float64, error) {
 	// for a 3-parameter problem. Nelder-Mead typically terminates via FunctionEvaluationLimit.
 	settings := &optimize.Settings{FuncEvaluations: 500}
 	result, err := optimize.Minimize(problem, scaledX0, settings, &optimize.NelderMead{})
-	ie.fitDone = true
 	if err != nil {
 		// Genuine pre-flight failure (ill-formed problem or settings); result may be nil.
 		slog.Warn("InitEstimator: Nelder-Mead pre-flight error, using guessInitState fallback", "err", err)
