@@ -103,12 +103,43 @@ func (ie *InitEstimator) Fit() ([]float64, error) {
 		x0 = []float64{5.0, 0.05, 0.0005}
 	}
 
-	problem := optimize.Problem{Func: ie.objective}
+	result, err := ie.fitWithX0(x0)
+	ie.fitDone = true
+	return result, err
+}
+
+// fitWithX0 runs the Nelder-Mead optimisation starting from the given x0.
+// x0 must be positive (all values > 0); it is used as the variable scale so
+// the optimizer always sees O(1) quantities regardless of parameter magnitude.
+// Requires at least one observation to have been added.
+func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
+	if len(ie.observations) == 0 {
+		return nil, fmt.Errorf("no observations to fit")
+	}
+
+	// Scale variables by x0 so the optimizer sees O(1) quantities.
+	// Nelder-Mead builds its initial simplex with a fixed absolute offset (SimplexSize=0.05)
+	// per dimension. Without scaling, gamma (~0.00005) gets a 100,000% perturbation while
+	// alpha (~5) gets only 1% — a degenerate simplex. x0 is always positive here.
+	scale := make([]float64, len(x0))
+	scaledX0 := make([]float64, len(x0))
+	for i, v := range x0 {
+		scale[i] = v
+		scaledX0[i] = 1.0
+	}
+	scaledObjective := func(p []float64) float64 {
+		unscaled := make([]float64, len(p))
+		for i := range p {
+			unscaled[i] = p[i] * scale[i]
+		}
+		return ie.objective(unscaled)
+	}
+
+	problem := optimize.Problem{Func: scaledObjective}
 	// 500 evaluations bounds worst-case latency (~30ms for K=5 obs) while allowing convergence
 	// for a 3-parameter problem. Nelder-Mead typically terminates via FunctionEvaluationLimit.
 	settings := &optimize.Settings{FuncEvaluations: 500}
-	result, err := optimize.Minimize(problem, x0, settings, &optimize.NelderMead{})
-	ie.fitDone = true
+	result, err := optimize.Minimize(problem, scaledX0, settings, &optimize.NelderMead{})
 	if err != nil {
 		// Genuine pre-flight failure (ill-formed problem or settings); result may be nil.
 		slog.Warn("InitEstimator: Nelder-Mead pre-flight error, using guessInitState fallback", "err", err)
@@ -131,7 +162,12 @@ func (ie *InitEstimator) Fit() ([]float64, error) {
 		return nil, fmt.Errorf("Nelder-Mead unexpected status %v and guessInitState returned nil", result.Status)
 	}
 
-	x := result.X
+	// Unscale the result back to raw parameter space.
+	unscaled := make([]float64, len(result.X))
+	for i := range result.X {
+		unscaled[i] = result.X[i] * scale[i]
+	}
+	x := unscaled
 	if x[0] <= 0 || x[1] <= 0 || x[2] <= 0 {
 		slog.Warn("InitEstimator: Nelder-Mead returned non-positive params, using guessInitState fallback",
 			"alpha", x[0], "beta", x[1], "gamma", x[2])

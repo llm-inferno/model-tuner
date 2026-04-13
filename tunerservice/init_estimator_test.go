@@ -159,6 +159,89 @@ func TestInitEstimator_Fit_ParameterRecovery(t *testing.T) {
 	checkParam("gamma", fitted[2], float64(trueGamma))
 }
 
+// TestInitEstimator_Fit_PoorStartingPoint verifies that the scaled Nelder-Mead
+// converges to the true parameters even when x0 is far from the true values.
+// This specifically exercises the scaling fix: without scaling the initial
+// simplex would be degenerate for gamma, causing the optimizer to get stuck.
+func TestInitEstimator_Fit_PoorStartingPoint(t *testing.T) {
+	trueAlpha := float32(16.78)
+	trueBeta := float32(0.073)
+	trueGamma := float32(0.00228)
+	maxBatch := 64
+
+	type opPoint struct {
+		lambda float32
+		inTok  float32
+		outTok float32
+	}
+	ops := []opPoint{
+		{lambda: 10, inTok: 90, outTok: 670},
+		{lambda: 15, inTok: 120, outTok: 900},
+		{lambda: 20, inTok: 150, outTok: 1100},
+		{lambda: 12, inTok: 100, outTok: 750},
+		{lambda: 18, inTok: 165, outTok: 1250},
+	}
+
+	ie := NewInitEstimator(len(ops), false)
+
+	for _, op := range ops {
+		qConfig := &analyzer.Configuration{
+			MaxBatchSize: maxBatch,
+			MaxQueueSize: 10 * maxBatch,
+			ServiceParms: &analyzer.ServiceParms{
+				Alpha: trueAlpha,
+				Beta:  trueBeta,
+				Gamma: trueGamma,
+			},
+		}
+		requestSize := &analyzer.RequestSize{
+			AvgInputTokens:  op.inTok,
+			AvgOutputTokens: op.outTok,
+		}
+		qa, err := analyzer.NewLLMQueueAnalyzer(qConfig, requestSize)
+		if err != nil {
+			t.Fatalf("failed to create analyzer: %v", err)
+		}
+		metrics, err := qa.Analyze(op.lambda / 60)
+		if err != nil {
+			t.Fatalf("Analyze failed: %v", err)
+		}
+		env := core.NewEnvironmentPrefillDecode(
+			op.lambda, 0, 0, maxBatch,
+			op.inTok, op.outTok,
+			metrics.AvgTTFT, metrics.AvgTokenTime,
+		)
+		ie.AddObservation(env)
+	}
+
+	// Deliberately poor starting point: 17× off on alpha, 7× off on beta, 23× off on gamma.
+	// Without variable scaling the initial simplex would be degenerate (beta and gamma
+	// receive enormous absolute perturbations relative to their magnitude), causing the
+	// optimizer to get stuck. With scaling each dimension starts at 1.0 with a uniform 5%
+	// perturbation, allowing convergence from this far-off starting point.
+	poorX0 := []float64{1.0, 0.01, 0.0001}
+	fitted, err := ie.fitWithX0(poorX0)
+	if err != nil {
+		t.Fatalf("fitWithX0() returned error: %v", err)
+	}
+	if len(fitted) != 3 {
+		t.Fatalf("expected 3 params, got %d", len(fitted))
+	}
+
+	tolerance := 0.10
+	checkParam := func(name string, got, want float64) {
+		t.Helper()
+		relErr := math.Abs(got-want) / want
+		if relErr > tolerance {
+			t.Errorf("param %s: got %.6f, want %.6f (relative error %.1f%% > %.0f%%)",
+				name, got, want, relErr*100, tolerance*100)
+		}
+	}
+	checkParam("alpha", fitted[0], float64(trueAlpha))
+	checkParam("beta", fitted[1], float64(trueBeta))
+	checkParam("gamma", fitted[2], float64(trueGamma))
+}
+
 func TestTunerService_IsWarmingUp_DuringCollection(t *testing.T) {
 	ts := NewTunerService(3, 3, true)
 	key := makeKey("mymodel", "myacc")
