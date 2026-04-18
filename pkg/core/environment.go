@@ -13,6 +13,7 @@ type environmentBase struct {
 	BatchSize    float32 // batch size
 	AvgQueueTime float32 // average request queueing time (msec)
 	MaxBatchSize int     // maximum batch size
+	MaxQueueSize int     // maximum external queue depth (0 = use 10×MaxBatchSize fallback)
 }
 
 type EnvironmentDecode struct {

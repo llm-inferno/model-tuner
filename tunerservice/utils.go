@@ -59,6 +59,7 @@ func buildEnvironments(replicas []optconfig.ServerSpec) []*core.EnvironmentPrefi
 			a.TTFTAverage,
 			a.ITLAverage,
 		)
+		env.MaxQueueSize = r.MaxQueueSize
 		// env.Valid() is always true here: ArrivalRate > 0 (filtered by caller),
 		// tokens > 0, latency > 0, and maxBatch > 0 are all checked above.
 		envs = append(envs, env)

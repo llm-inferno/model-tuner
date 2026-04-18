@@ -54,6 +54,10 @@ func (c *QueueModelSystemFuncCreatorPrefillDecode) Create() func(x *mat.VecDense
 			return zero
 		}
 		maxBatchSize := envData.MaxBatchSize
+		maxQueueSize := envData.MaxQueueSize
+		if maxQueueSize == 0 {
+			maxQueueSize = 10 * maxBatchSize
+		}
 		avgInputTokens := envData.AvgInputTokens
 		avgOutputTokens := envData.AvgOutputTokens
 
@@ -64,7 +68,7 @@ func (c *QueueModelSystemFuncCreatorPrefillDecode) Create() func(x *mat.VecDense
 		// create queueing model
 		qConfig := &analyzer.Configuration{
 			MaxBatchSize: maxBatchSize,
-			MaxQueueSize: 10 * maxBatchSize,
+			MaxQueueSize: maxQueueSize,
 			ServiceParms: &analyzer.ServiceParms{
 				Alpha: alpha,
 				Beta:  beta,
@@ -108,6 +112,10 @@ func (c *QueueModelSystemFuncCreatorDecode) Create() func(x *mat.VecDense) *mat.
 			return nil
 		}
 		maxBatchSize := envData.MaxBatchSize
+		maxQueueSize := envData.MaxQueueSize
+		if maxQueueSize == 0 {
+			maxQueueSize = 10 * maxBatchSize
+		}
 		avgOutputTokens := envData.AvgOutputTokens
 
 		alpha := float32(x.AtVec(0))
@@ -116,7 +124,7 @@ func (c *QueueModelSystemFuncCreatorDecode) Create() func(x *mat.VecDense) *mat.
 		// create queueing model
 		qConfig := &analyzer.Configuration{
 			MaxBatchSize: maxBatchSize,
-			MaxQueueSize: 10 * maxBatchSize,
+			MaxQueueSize: maxQueueSize,
 			ServiceParms: &analyzer.ServiceParms{
 				Alpha: alpha,
 				Beta:  beta,
