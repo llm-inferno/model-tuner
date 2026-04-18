@@ -74,6 +74,7 @@ Each `ServerSpec` carries:
 | `CurrentAlloc.TTFTAverage` | `AvgTTFT` (ms) — observed |
 | `CurrentAlloc.ITLAverage` | `AvgITL` (ms) — observed |
 | `MaxBatchSize` / `CurrentAlloc.MaxBatch` | `MaxBatchSize` |
+| `MaxQueueSize` | `MaxQueueSize` (0 = use legacy `10×MaxBatchSize` fallback) |
 
 Replicas with `ArrivalRate <= 0` are skipped (no traffic = no useful observation).
 
@@ -85,6 +86,13 @@ The observation function `h(x)` runs a full M/G/1/K queue simulation
 (via `queue-analysis/pkg/analyzer`) to predict `[TTFT, ITL]` from the current state
 and environment. The EKF update corrects the state to minimize the difference between
 predicted and observed `[TTFT, ITL]`.
+
+The queue capacity passed to the analyzer is `MaxQueueSize` from the environment. When
+`MaxQueueSize` is zero (field not set on the incoming `ServerSpec`), the system function
+falls back to `10 × MaxBatchSize` to preserve backward-compatible behaviour for callers
+that do not configure an explicit queue depth. Set `MaxQueueSize` explicitly on the
+`ServerSpec` (via the `inferno.server.allocation.maxqueuesize` deployment label) to
+align the EKF forward model with the evaluator's `DEFAULT_MAX_QUEUE_SIZE`.
 
 ### Output: `config.ModelData`
 
