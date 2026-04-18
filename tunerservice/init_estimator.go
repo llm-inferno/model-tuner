@@ -15,6 +15,7 @@ import (
 type fitObservation struct {
 	Lambda          float64 // arrival rate, req/min
 	MaxBatch        int
+	MaxQueueSize    int     // external queue depth (0 = no external queue)
 	AvgInputTokens  float32
 	AvgOutputTokens float32
 	AvgTTFT         float64 // ms
@@ -23,7 +24,7 @@ type fitObservation struct {
 
 // toEnv converts a fitObservation to an EnvironmentPrefillDecode for use with guessInitState.
 func (fo *fitObservation) toEnv() *core.EnvironmentPrefillDecode {
-	return core.NewEnvironmentPrefillDecode(
+	env := core.NewEnvironmentPrefillDecode(
 		float32(fo.Lambda),
 		0, // BatchSize not used
 		0, // AvgQueueTime not available
@@ -33,6 +34,8 @@ func (fo *fitObservation) toEnv() *core.EnvironmentPrefillDecode {
 		float32(fo.AvgTTFT),
 		float32(fo.AvgITL),
 	)
+	env.MaxQueueSize = fo.MaxQueueSize
+	return env
 }
 
 // InitEstimator accumulates observations before the EKF starts and fits initial parameters.
@@ -62,6 +65,7 @@ func (ie *InitEstimator) AddObservation(env *core.EnvironmentPrefillDecode) {
 	ie.observations = append(ie.observations, fitObservation{
 		Lambda:          float64(env.Lambda),
 		MaxBatch:        env.MaxBatchSize,
+		MaxQueueSize:    env.MaxQueueSize,
 		AvgInputTokens:  env.AvgInputTokens,
 		AvgOutputTokens: env.AvgOutputTokens,
 		AvgTTFT:         float64(env.AvgTTFT),
@@ -194,7 +198,7 @@ func (ie *InitEstimator) objective(x []float64) float64 {
 	for _, obs := range ie.observations {
 		qConfig := &analyzer.Configuration{
 			MaxBatchSize: obs.MaxBatch,
-			MaxQueueSize: 10 * obs.MaxBatch,
+			MaxQueueSize: obs.MaxQueueSize,
 			ServiceParms: &analyzer.ServiceParms{
 				Alpha: float32(x[0]),
 				Beta:  float32(x[1]),

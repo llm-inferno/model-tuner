@@ -38,8 +38,8 @@ func TestBuildEnvironments_MaxQueueSizeFromSpec(t *testing.T) {
 }
 
 // TestBuildEnvironments_ZeroMaxQueueSizeWhenUnset verifies that buildEnvironments
-// leaves MaxQueueSize as zero when the ServerSpec does not set it, preserving
-// the legacy fallback behaviour in the system function.
+// leaves MaxQueueSize as zero when the ServerSpec does not set it; zero means
+// no external queue (system capacity = MaxBatchSize), consistent with the optimizer.
 func TestBuildEnvironments_ZeroMaxQueueSizeWhenUnset(t *testing.T) {
 	specs := []optconfig.ServerSpec{
 		{
@@ -65,6 +65,6 @@ func TestBuildEnvironments_ZeroMaxQueueSizeWhenUnset(t *testing.T) {
 	}
 
 	if envs[0].MaxQueueSize != 0 {
-		t.Errorf("MaxQueueSize = %d, want 0 (legacy fallback)", envs[0].MaxQueueSize)
+		t.Errorf("MaxQueueSize = %d, want 0 (no external queue)", envs[0].MaxQueueSize)
 	}
 }

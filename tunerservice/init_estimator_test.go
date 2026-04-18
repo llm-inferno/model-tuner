@@ -14,6 +14,12 @@ func makeTestEnv(lambda, ttft, itl float32, inTok, outTok float32, maxBatch int)
 	)
 }
 
+func makeTestEnvWithQueue(lambda, ttft, itl float32, inTok, outTok float32, maxBatch, maxQueue int) *core.EnvironmentPrefillDecode {
+	env := core.NewEnvironmentPrefillDecode(lambda, 0, 0, maxBatch, inTok, outTok, ttft, itl)
+	env.MaxQueueSize = maxQueue
+	return env
+}
+
 func TestInitEstimator_HoldBack(t *testing.T) {
 	ie := NewInitEstimator(3, true)
 	if !ie.HoldBack() {
@@ -59,7 +65,7 @@ func TestInitEstimator_AddObservation_IgnoresNilAndInvalid(t *testing.T) {
 
 func TestInitEstimator_AddObservation_StoresFields(t *testing.T) {
 	ie := NewInitEstimator(1, false)
-	env := makeTestEnv(30, 45.5, 6.2, 120, 700, 64)
+	env := makeTestEnvWithQueue(30, 45.5, 6.2, 120, 700, 64, 128)
 	ie.AddObservation(env)
 	if len(ie.observations) != 1 {
 		t.Fatalf("expected 1 observation, got %d", len(ie.observations))
@@ -70,6 +76,9 @@ func TestInitEstimator_AddObservation_StoresFields(t *testing.T) {
 	}
 	if obs.MaxBatch != env.MaxBatchSize {
 		t.Errorf("MaxBatch mismatch: got %v want %v", obs.MaxBatch, env.MaxBatchSize)
+	}
+	if obs.MaxQueueSize != env.MaxQueueSize {
+		t.Errorf("MaxQueueSize mismatch: got %v want %v", obs.MaxQueueSize, env.MaxQueueSize)
 	}
 	if obs.AvgTTFT != float64(env.AvgTTFT) {
 		t.Errorf("AvgTTFT mismatch: got %v want %v", obs.AvgTTFT, env.AvgTTFT)
@@ -105,7 +114,7 @@ func TestInitEstimator_Fit_ParameterRecovery(t *testing.T) {
 	for _, op := range ops {
 		qConfig := &analyzer.Configuration{
 			MaxBatchSize: maxBatch,
-			MaxQueueSize: 10 * maxBatch,
+			MaxQueueSize: 0,
 			ServiceParms: &analyzer.ServiceParms{
 				Alpha: trueAlpha,
 				Beta:  trueBeta,
@@ -187,7 +196,7 @@ func TestInitEstimator_Fit_PoorStartingPoint(t *testing.T) {
 	for _, op := range ops {
 		qConfig := &analyzer.Configuration{
 			MaxBatchSize: maxBatch,
-			MaxQueueSize: 10 * maxBatch,
+			MaxQueueSize: 0,
 			ServiceParms: &analyzer.ServiceParms{
 				Alpha: trueAlpha,
 				Beta:  trueBeta,
