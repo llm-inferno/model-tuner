@@ -55,9 +55,6 @@ func (c *QueueModelSystemFuncCreatorPrefillDecode) Create() func(x *mat.VecDense
 		}
 		maxBatchSize := envData.MaxBatchSize
 		maxQueueSize := envData.MaxQueueSize
-		if maxQueueSize == 0 {
-			maxQueueSize = 10 * maxBatchSize
-		}
 		avgInputTokens := envData.AvgInputTokens
 		avgOutputTokens := envData.AvgOutputTokens
 
@@ -113,9 +110,6 @@ func (c *QueueModelSystemFuncCreatorDecode) Create() func(x *mat.VecDense) *mat.
 		}
 		maxBatchSize := envData.MaxBatchSize
 		maxQueueSize := envData.MaxQueueSize
-		if maxQueueSize == 0 {
-			maxQueueSize = 10 * maxBatchSize
-		}
 		avgOutputTokens := envData.AvgOutputTokens
 
 		alpha := float32(x.AtVec(0))
