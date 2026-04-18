@@ -74,6 +74,7 @@ Each `ServerSpec` carries:
 | `CurrentAlloc.TTFTAverage` | `AvgTTFT` (ms) — observed |
 | `CurrentAlloc.ITLAverage` | `AvgITL` (ms) — observed |
 | `MaxBatchSize` / `CurrentAlloc.MaxBatch` | `MaxBatchSize` |
+| `MaxQueueSize` | `MaxQueueSize` (0 = no external queue; system capacity = `MaxBatchSize`) |
 
 Replicas with `ArrivalRate <= 0` are skipped (no traffic = no useful observation).
 
@@ -85,6 +86,15 @@ The observation function `h(x)` runs a full M/G/1/K queue simulation
 (via `queue-analysis/pkg/analyzer`) to predict `[TTFT, ITL]` from the current state
 and environment. The EKF update corrects the state to minimize the difference between
 predicted and observed `[TTFT, ITL]`.
+
+The queue capacity passed to the analyzer is `MaxQueueSize` from the environment,
+used directly with no fallback. When `MaxQueueSize` is zero (label not set on the
+deployment), the system capacity equals `MaxBatchSize` only — no external waiting
+queue. This matches the behaviour of the optimizer (`optimizer-light` v0.7.5+), which
+also passes `MaxQueueSize` through without a default multiplier. Set `MaxQueueSize`
+explicitly on the deployment (via the `inferno.server.allocation.maxqueuesize` label)
+to model an external queue and align the EKF forward model with the evaluator's
+`DEFAULT_MAX_QUEUE_SIZE`.
 
 ### Output: `config.ModelData`
 
