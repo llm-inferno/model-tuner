@@ -36,3 +36,14 @@ const (
 	DefaultInitObs      = 5
 	DefaultInitHoldBack = true
 )
+
+// Environment variable names and defaults for the SlidingWindowEstimator.
+const (
+	EstimatorModeEnvName     = "TUNER_ESTIMATOR_MODE"
+	WindowSizeEnvName        = "TUNER_WINDOW_SIZE"
+	ResidualThresholdEnvName = "TUNER_RESIDUAL_THRESHOLD"
+
+	DefaultEstimatorMode     = "ekf"
+	DefaultWindowSize        = 10
+	DefaultResidualThreshold = 0.5
+)

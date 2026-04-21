@@ -44,15 +44,19 @@ On each call to `GetEnvironment()`, the observer queries Prometheus for the late
 
 ## Tuner Service
 
-The `tunerservice` package is a passive HTTP server designed for integration with the llm-inferno control-loop. It accepts per-replica metrics from the Collector, runs EKF tuning grouped by `(model, accelerator)`, and returns updated `ModelData` (alpha, beta, gamma) ready for direct use by the Optimizer — no internal polling loop or Collector dependency.
+The `tunerservice` package is a passive HTTP server designed for integration with the llm-inferno control-loop. It accepts per-replica metrics from the Collector, runs parameter tuning grouped by `(model, accelerator)`, and returns updated `ModelData` (alpha, beta, gamma) ready for direct use by the Optimizer — no internal polling loop or Collector dependency.
 
 **Key endpoints:**
-- `POST /tune` — accepts `[]config.ServerSpec`, runs EKF tuning, stores results in `ParameterStore`
+- `POST /tune` — accepts `[]config.ServerSpec`, runs tuning, stores results in `ParameterStore`
 - `POST /merge` — accepts current `config.ModelData`, returns it with tuned `PerfParms` overlaid from `ParameterStore`
 - `GET /getparams?model=<name>&accelerator=<acc>` — retrieves the last stored parameters for a pair
-- `GET /warmup` — returns whether any pair is still in warm-up (collection or EKF warm-up phase)
+- `GET /warmup` — returns whether any pair is still in warm-up (collection, EKF warm-up, or SWNM window-filling phase)
 
-**Initial parameter estimation** — before the EKF starts for a new `(model, accelerator)` pair, the service accumulates `TUNER_INIT_OBS` (default 5) observations across control cycles, then runs a Nelder-Mead fit to find initial (α, β, γ) that jointly explain all observations. This replaces the previous single-observation zero-load algebraic inversion, which breaks down at moderate-to-high traffic levels. During collection, `GET /warmup` returns `true` (configurable via `TUNER_INIT_HOLD_BACK`) so the controller can defer optimization until parameters are ready.
+**Two estimation backends** — select via `TUNER_ESTIMATOR_MODE`:
+- `ekf` (default) — Extended Kalman Filter with NIS-gate outlier rejection
+- `sliding-window` — re-fits [α,β,γ] via Nelder-Mead every cycle over a FIFO window of recent observations (`TUNER_WINDOW_SIZE`, default 10); no covariance matrices to tune; includes residual-based outlier rejection (`TUNER_RESIDUAL_THRESHOLD`, default 0.5). Use this when the EKF diverges or NIS-gate misfires produce bad parameter estimates.
+
+**Initial parameter estimation** — before steady-state begins for a new `(model, accelerator)` pair, the service accumulates `TUNER_INIT_OBS` (default 5) observations across control cycles, then runs a Nelder-Mead fit to find initial (α, β, γ) that jointly explain all observations. During collection, `GET /warmup` returns `true` (configurable via `TUNER_INIT_HOLD_BACK`) so the controller can defer optimization until parameters are ready.
 
 See [`tunerservice/README.md`](tunerservice/README.md) for full API docs, EKF features, warm-up phases, and configuration.
 

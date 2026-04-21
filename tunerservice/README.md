@@ -1,6 +1,6 @@
 # tunerservice
 
-EKF-based model parameter tuning service for integration with the llm-inferno control-loop.
+Model parameter tuning service for integration with the llm-inferno control-loop. Supports two estimation backends: EKF (default) and Sliding-Window Nelder-Mead (SWNM).
 
 ## Overview
 
@@ -10,7 +10,12 @@ LLM inference servers are modeled by three parameters (alpha, beta, gamma) descr
 iterationTime = alpha + beta*computedTokens + gamma*transferredTokens
 ```
 
-This package continuously refines those parameters using an Extended Kalman Filter (EKF) fed by per-replica performance observations. Tuned parameters are stored in a thread-safe `ParameterStore` keyed by `model/accelerator` and returned as `optimizer-light` `ModelData`, ready for direct use by the Optimizer.
+This package continuously refines those parameters from per-replica performance observations and stores them in a thread-safe `ParameterStore` keyed by `model/accelerator`, returned as `optimizer-light` `ModelData` ready for direct use by the Optimizer.
+
+Two estimation backends are available, selected via `TUNER_ESTIMATOR_MODE`:
+
+- **EKF** (default) — Extended Kalman Filter with NIS gate; fast per-cycle updates and state continuity across cycles.
+- **Sliding-Window Nelder-Mead (SWNM)** — re-fits [α,β,γ] via Nelder-Mead on every cycle over a fixed-size FIFO window of recent observations; no covariance matrices to tune, and includes residual-based outlier rejection. Use this when the EKF diverges or NIS-gate misfires cause bad parameter estimates.
 
 ## HTTP API
 
@@ -77,9 +82,10 @@ Returns whether the tuner is still in a warm-up phase (collection or EKF warm-up
 
 Returns `true` if:
 - any pair is still collecting initial observations (`TUNER_INIT_HOLD_BACK=true` and fewer than `TUNER_INIT_OBS` observations accumulated), or
-- any pair has fewer than `TUNER_WARM_UP_CYCLES` accepted EKF updates (NIS gate is disabled during this window).
+- **EKF mode:** any pair has fewer than `TUNER_WARM_UP_CYCLES` accepted EKF updates (NIS gate is disabled during this window), or
+- **SWNM mode:** any pair whose `InitEstimator` has completed does not yet have a full sliding window (`TUNER_WINDOW_SIZE` observations).
 
-Returns `false` once all pairs have graduated to normal operation, or if `TUNER_WARM_UP_CYCLES=0`.
+Returns `false` once all pairs have graduated to normal operation, or if `TUNER_WARM_UP_CYCLES=0` (EKF) / window is full (SWNM).
 
 ## Control-Loop Integration
 
@@ -91,17 +97,31 @@ Intended usage from the control-loop `Controller`:
 4. Set `SystemData.Spec.Models` to the merged `ModelData`.
 5. `POST` `SystemData` to the Optimizer as usual.
 
-## EKF Features
+## Estimation Features
+
+### Common (both modes)
+
+**Initial parameter estimation** — on first use of a `(model, accelerator)` pair, the service accumulates `TUNER_INIT_OBS` (default 5) operating-point snapshots across control cycles, then runs a Nelder-Mead fit to find (α, β, γ) that jointly minimise mean squared error in TTFT and ITL. This approach is robust at any traffic level; a single-observation zero-load inversion inflates α at moderate-to-high utilization where the light-traffic assumption breaks down. Variables are scaled by the starting point so the simplex is well-conditioned across parameters spanning orders of magnitude (α~5, β~0.05, γ~0.00005).
+
+### EKF mode (default, `TUNER_ESTIMATOR_MODE=ekf`)
 
 **State continuity** — previously tuned alpha/beta/gamma and their covariance matrix are restored at the start of each tuning cycle, so the filter converges faster over time rather than reinitializing from scratch.
 
-**Initial parameter estimation** — on first use of a `(model, accelerator)` pair, the service runs a multi-observation Nelder-Mead fit before starting the EKF. It accumulates `TUNER_INIT_OBS` (default 5) operating-point snapshots across control cycles, then minimises mean squared error in TTFT and ITL across all observations jointly to find (α, β, γ) that best explain all of them. This approach is robust at any traffic level; a single-observation zero-load inversion (the previous approach) inflates α at moderate-to-high utilization where the light-traffic assumption breaks down. Token-count variation across observations resolves the three-parameter identifiability problem. Variables are scaled by the starting point before entering the optimizer so the Nelder-Mead simplex is well-conditioned across parameters that span orders of magnitude (α~5, β~0.05, γ~0.00005). If the Nelder-Mead fit fails or returns non-positive parameters, the service falls back to the single-observation algebraic inversion.
-
 **NIS validation** — after each EKF update, the Normalized Innovation Squared (NIS = yᵀ S⁻¹ y) is checked against a chi-squared threshold (7.378 for 2 DOF at 97.5%). Updates that exceed the threshold are rejected and the filter is rolled back, preventing parameter divergence on outlier observations.
+
+### Sliding-Window Nelder-Mead mode (`TUNER_ESTIMATOR_MODE=sliding-window`)
+
+**Continuous re-fitting** — every tuning cycle, Nelder-Mead is run over the `TUNER_WINDOW_SIZE` (default 10) most recent observations. No covariance matrices to configure; convergence failure simply retains the previous estimate.
+
+**Residual-based outlier rejection** — after an initial fit, the observation with the highest relative squared error is dropped if its residual exceeds `TUNER_RESIDUAL_THRESHOLD` (default 0.5), then Nelder-Mead runs once more on the cleaned window. Only one observation is removed per cycle to avoid discarding good observations that appear anomalous only because the initial fit was corrupted by the outlier.
+
+**Seeding** — the `TUNER_INIT_OBS` collection-phase observations pre-fill the sliding window, so the first estimate is available as soon as the window reaches capacity.
 
 ## Warm-up Phases
 
-Each `(model, accelerator)` pair goes through three phases before reaching normal operation:
+### EKF mode
+
+Each `(model, accelerator)` pair goes through three phases:
 
 | Phase | Duration | Behavior |
 |---|---|---|
@@ -109,23 +129,23 @@ Each `(model, accelerator)` pair goes through three phases before reaching norma
 | **EKF warm-up** | `TUNER_WARM_UP_CYCLES` cycles (default 5) | EKF runs from Nelder-Mead fit result with NIS gate disabled; `GET /warmup` returns `true` |
 | **Normal** | ongoing | NIS gate active; parameters tracked continuously; `GET /warmup` returns `false` |
 
-Set `TUNER_INIT_HOLD_BACK=false` to let the controller proceed with static model data during collection instead of holding back.
-
-### Interaction between TUNER_INIT_OBS and TUNER_WARM_UP_CYCLES
-
-The two variables govern **sequential** phases — there is no overlap or interference:
-
-- During collection, the EKF never runs and `paramStore` stays empty, so the EKF warm-up check (`UpdateCount < TUNER_WARM_UP_CYCLES`) never fires. The hold-back signal during collection comes entirely from the estimator check.
-- Once collection completes and `Fit()` runs, the EKF starts and `paramStore` gains entries. The hold-back signal then transitions to the EKF warm-up check. The estimator check no longer fires (estimator is ready).
-- `GET /warmup` returns `true` across both phases, presenting a single "not ready" signal to the controller.
-
-**Total controller hold-back** when `TUNER_INIT_HOLD_BACK=true` is therefore:
+**Total controller hold-back** when `TUNER_INIT_HOLD_BACK=true`:
 
 ```
 hold-back cycles = TUNER_INIT_OBS + TUNER_WARM_UP_CYCLES  (defaults: 5 + 5 = 10)
 ```
 
-At a 60-second control period this is 10 minutes before the controller first invokes the optimizer with tuned parameters. Lower one or both values for faster startup if the operating conditions are well-understood.
+### SWNM mode
+
+| Phase | Duration | Behavior |
+|---|---|---|
+| **Collection** | `TUNER_INIT_OBS` cycles (default 5) | Observations accumulated; `GET /warmup` returns `true` if `TUNER_INIT_HOLD_BACK=true` |
+| **Window filling** | up to `TUNER_WINDOW_SIZE − TUNER_INIT_OBS` cycles | Sliding window fills after seeding from collection observations; `GET /warmup` returns `true` |
+| **Normal** | ongoing | Nelder-Mead re-fit every cycle on full window; `GET /warmup` returns `false` |
+
+When `TUNER_INIT_OBS >= TUNER_WINDOW_SIZE`, the collection observations fill the window completely and the window-filling phase is skipped — the first estimate is produced immediately after collection.
+
+Set `TUNER_INIT_HOLD_BACK=false` to let the controller proceed with static model data during collection instead of holding back.
 
 ## Multi-Replica Tuning
 
@@ -140,9 +160,12 @@ Filter and model parameters are loaded from `default-config-data.json` in the di
 | `CONFIG_DATA_DIR` | Directory with JSON config files | `config-data` |
 | `TUNER_HOST` | Server listen address | `localhost` |
 | `TUNER_PORT` | Server listen port | `8081` |
-| `TUNER_WARM_UP_CYCLES` | Accepted EKF updates during which the NIS gate is disabled | `5` |
-| `TUNER_INIT_OBS` | Observations to accumulate before running the Nelder-Mead initial parameter fit; set to `1` to revert to single-observation algebraic inversion | `5` |
+| `TUNER_WARM_UP_CYCLES` | (EKF) Accepted EKF updates during which the NIS gate is disabled | `5` |
+| `TUNER_INIT_OBS` | Observations to accumulate before running the Nelder-Mead initial parameter fit | `5` |
 | `TUNER_INIT_HOLD_BACK` | If `true`, report `warmingUp=true` during collection so the controller skips optimize+actuate; if `false`, controller proceeds with static model data | `true` |
+| `TUNER_ESTIMATOR_MODE` | Estimation backend: `ekf` or `sliding-window` | `ekf` |
+| `TUNER_WINDOW_SIZE` | (SWNM) Number of observations in the sliding window | `10` |
+| `TUNER_RESIDUAL_THRESHOLD` | (SWNM) Per-observation relative error cutoff for outlier rejection | `0.5` |
 
 ## Running the Demo
 

@@ -16,21 +16,29 @@ import (
 // TunerService groups replica metrics by (model, accelerator), runs EKF tuning per group,
 // maintains a ParameterStore for state continuity, and returns updated ModelData.
 type TunerService struct {
-	paramStore   *ParameterStore
-	warmUpCycles int
-	estimators   map[string]*InitEstimator
-	initObs      int
-	holdBack     bool
+	paramStore        *ParameterStore
+	warmUpCycles      int
+	estimators        map[string]*InitEstimator
+	initObs           int
+	holdBack          bool
+	useSliding        bool
+	windowSize        int
+	residualThreshold float64
+	slidingEstimators map[string]*SlidingWindowEstimator
 }
 
 // NewTunerService creates a TunerService with an empty ParameterStore.
-func NewTunerService(warmUpCycles, initObs int, holdBack bool) *TunerService {
+func NewTunerService(warmUpCycles, initObs int, holdBack bool, useSliding bool, windowSize int, residualThreshold float64) *TunerService {
 	return &TunerService{
-		paramStore:   NewParameterStore(),
-		warmUpCycles: warmUpCycles,
-		estimators:   make(map[string]*InitEstimator),
-		initObs:      initObs,
-		holdBack:     holdBack,
+		paramStore:        NewParameterStore(),
+		warmUpCycles:      warmUpCycles,
+		estimators:        make(map[string]*InitEstimator),
+		initObs:           initObs,
+		holdBack:          holdBack,
+		useSliding:        useSliding,
+		windowSize:        windowSize,
+		residualThreshold: residualThreshold,
+		slidingEstimators: make(map[string]*SlidingWindowEstimator),
 	}
 }
 
@@ -42,6 +50,62 @@ func (ts *TunerService) estimatorFor(key string) *InitEstimator {
 	ie := NewInitEstimator(ts.initObs, ts.holdBack)
 	ts.estimators[key] = ie
 	return ie
+}
+
+// slidingEstimatorFor returns the SlidingWindowEstimator for the given key, creating and
+// seeding it from ie.observations if it does not yet exist.
+func (ts *TunerService) slidingEstimatorFor(key string, ie *InitEstimator) *SlidingWindowEstimator {
+	if swe, ok := ts.slidingEstimators[key]; ok {
+		return swe
+	}
+	swe := NewSlidingWindowEstimator(ts.windowSize, ts.residualThreshold)
+	swe.Seed(ie.observations)
+	ts.slidingEstimators[key] = swe
+	return swe
+}
+
+// tuneGroupSliding performs parameter estimation for one (model, accelerator) group using
+// the SlidingWindowEstimator. Called by tuneGroup when useSliding is true and the
+// InitEstimator has completed its collection phase.
+func (ts *TunerService) tuneGroupSliding(model, accelerator, key string, ie *InitEstimator, env *core.EnvironmentPrefillDecode) error {
+	_, alreadyExists := ts.slidingEstimators[key]
+	swe := ts.slidingEstimatorFor(key, ie)
+	if alreadyExists {
+		// SWE already existed: add the current observation (it was not part of the seed).
+		swe.AddObservation(env)
+	}
+	// If SWE was just created: ie.observations (which includes env) was used as the seed.
+
+	if !swe.IsReady() {
+		slog.Info("sliding window filling",
+			"model", model, "accelerator", accelerator,
+			"count", len(swe.window), "windowSize", swe.windowSize)
+		return fmt.Errorf("sliding window filling for %s/%s (%d/%d)",
+			model, accelerator, len(swe.window), swe.windowSize)
+	}
+
+	fitted, err := swe.Fit()
+	if err != nil {
+		return fmt.Errorf("SlidingWindowEstimator.Fit for %s/%s: %w", model, accelerator, err)
+	}
+
+	updateCount := 0
+	if existing := ts.paramStore.Get(model, accelerator); existing != nil {
+		updateCount = existing.UpdateCount
+	}
+	ts.paramStore.Set(model, accelerator, &LearnedParameters{
+		Alpha:       float32(fitted[0]),
+		Beta:        float32(fitted[1]),
+		Gamma:       float32(fitted[2]),
+		NIS:         0,
+		UpdateCount: updateCount + 1,
+		LastUpdated: time.Now(),
+	})
+	slog.Info("sliding-window tuned parameters",
+		"model", model, "accelerator", accelerator,
+		"alpha", fitted[0], "beta", fitted[1], "gamma", fitted[2],
+		"updateCount", updateCount+1)
+	return nil
 }
 
 // Tune accepts per-replica ServerSpecs from the control-loop Collector, runs EKF tuning for each
@@ -100,6 +164,11 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 			"count", estimator.ObsCount(), "minObs", estimator.MinObs())
 		return fmt.Errorf("collecting initial observations for %s/%s (%d/%d)",
 			model, accelerator, estimator.ObsCount(), estimator.MinObs())
+	}
+
+	// SWNM path: bypass the EKF and use the sliding-window estimator instead.
+	if ts.useSliding {
+		return ts.tuneGroupSliding(model, accelerator, key, estimator, envs[0])
 	}
 
 	// Fit once: run Nelder-Mead on the first cycle after collection completes.
@@ -265,11 +334,22 @@ func (ts *TunerService) GetParams(model, accelerator string) *LearnedParameters 
 // updates for at least one known (model, accelerator) pair.
 // Returns false when warmUpCycles is zero or when all pairs have graduated.
 func (ts *TunerService) IsWarmingUp() bool {
-	// Check estimators in collection phase (holdBack=true only)
 	for _, ie := range ts.estimators {
 		if !ie.IsReady() && ie.HoldBack() {
 			return true
 		}
+	}
+	if ts.useSliding {
+		for key, ie := range ts.estimators {
+			if !ie.IsReady() {
+				continue
+			}
+			swe, ok := ts.slidingEstimators[key]
+			if !ok || !swe.IsReady() {
+				return true
+			}
+		}
+		return false
 	}
 	if ts.warmUpCycles == 0 {
 		return false

@@ -252,7 +252,7 @@ func TestInitEstimator_Fit_PoorStartingPoint(t *testing.T) {
 }
 
 func TestTunerService_IsWarmingUp_DuringCollection(t *testing.T) {
-	ts := NewTunerService(3, 3, true)
+	ts := NewTunerService(3, 3, true, false, DefaultWindowSize, DefaultResidualThreshold)
 	key := makeKey("mymodel", "myacc")
 	ts.estimators[key] = NewInitEstimator(3, true)
 	if !ts.IsWarmingUp() {
@@ -261,7 +261,7 @@ func TestTunerService_IsWarmingUp_DuringCollection(t *testing.T) {
 }
 
 func TestTunerService_IsWarmingUp_HoldBackFalse(t *testing.T) {
-	ts := NewTunerService(3, 3, false)
+	ts := NewTunerService(3, 3, false, false, DefaultWindowSize, DefaultResidualThreshold)
 	key := makeKey("mymodel", "myacc")
 	ts.estimators[key] = NewInitEstimator(3, false)
 	if ts.IsWarmingUp() {
