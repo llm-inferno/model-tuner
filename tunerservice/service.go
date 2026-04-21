@@ -25,10 +25,12 @@ type TunerService struct {
 	windowSize        int
 	residualThreshold float64
 	slidingEstimators map[string]*SlidingWindowEstimator
+	initFitThreshold  float64         // 0 = disabled; >0 = EKF fallback when funcValue exceeds this
+	ekfFallbacks      map[string]bool // pairs permanently routed to EKF due to poor init fit
 }
 
 // NewTunerService creates a TunerService with an empty ParameterStore.
-func NewTunerService(warmUpCycles, initObs int, holdBack bool, useSliding bool, windowSize int, residualThreshold float64) *TunerService {
+func NewTunerService(warmUpCycles, initObs int, holdBack bool, useSliding bool, windowSize int, residualThreshold, initFitThreshold float64) *TunerService {
 	return &TunerService{
 		paramStore:        NewParameterStore(),
 		warmUpCycles:      warmUpCycles,
@@ -39,6 +41,8 @@ func NewTunerService(warmUpCycles, initObs int, holdBack bool, useSliding bool, 
 		windowSize:        windowSize,
 		residualThreshold: residualThreshold,
 		slidingEstimators: make(map[string]*SlidingWindowEstimator),
+		initFitThreshold:  initFitThreshold,
+		ekfFallbacks:      make(map[string]bool),
 	}
 }
 
@@ -61,7 +65,18 @@ func (ts *TunerService) slidingEstimatorFor(key string, ie *InitEstimator) *Slid
 	swe := NewSlidingWindowEstimator(ts.windowSize, ts.initObs, ts.residualThreshold)
 	swe.Seed(ie.observations)
 	if fitted, err := ie.Fit(); err == nil {
+		fv := ie.LastFitFuncValue()
+		if ts.initFitThreshold > 0 && fv > ts.initFitThreshold {
+			slog.Warn("poor init fit: falling back to EKF for this pair",
+				"key", key, "funcValue", fv, "threshold", ts.initFitThreshold)
+			ts.ekfFallbacks[key] = true
+			return swe // not stored; ekfFallbacks prevents future SWNM routing
+		}
 		swe.SeedLastFit(fitted)
+	} else if ts.initFitThreshold > 0 {
+		slog.Warn("init fit error: falling back to EKF for this pair", "key", key, "err", err)
+		ts.ekfFallbacks[key] = true
+		return swe
 	}
 	ts.slidingEstimators[key] = swe
 	return swe
@@ -73,6 +88,12 @@ func (ts *TunerService) slidingEstimatorFor(key string, ie *InitEstimator) *Slid
 func (ts *TunerService) tuneGroupSliding(model, accelerator, key string, ie *InitEstimator, env *core.EnvironmentPrefillDecode) error {
 	_, alreadyExists := ts.slidingEstimators[key]
 	swe := ts.slidingEstimatorFor(key, ie)
+
+	if ts.ekfFallbacks[key] {
+		return fmt.Errorf("EKF fallback active for %s/%s: poor init fit (funcValue > %.1f)",
+			model, accelerator, ts.initFitThreshold)
+	}
+
 	if alreadyExists {
 		// SWE already existed: add the current observation (it was not part of the seed).
 		swe.AddObservation(env)
@@ -170,7 +191,7 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 	}
 
 	// SWNM path: bypass the EKF and use the sliding-window estimator instead.
-	if ts.useSliding {
+	if ts.useSliding && !ts.ekfFallbacks[key] {
 		return ts.tuneGroupSliding(model, accelerator, key, estimator, envs[0])
 	}
 
@@ -347,9 +368,20 @@ func (ts *TunerService) IsWarmingUp() bool {
 			if !ie.IsReady() {
 				continue
 			}
+			if ts.ekfFallbacks[key] {
+				continue // handled by the EKF warm-up check below
+			}
 			swe, ok := ts.slidingEstimators[key]
 			if !ok || !swe.IsReady() {
 				return true
+			}
+		}
+		// EKF-fallback pairs need warm-up cycles just like regular EKF pairs.
+		if ts.warmUpCycles > 0 {
+			for _, params := range ts.paramStore.GetAll() {
+				if params.UpdateCount < ts.warmUpCycles {
+					return true
+				}
 			}
 		}
 		return false
