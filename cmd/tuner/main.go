@@ -39,14 +39,37 @@ func main() {
 		holdBack = v == "true" || v == "1"
 	}
 
-	service := tunerservice.NewTunerService(warmUpCycles, initObs, holdBack)
+	useSliding := os.Getenv(tunerservice.EstimatorModeEnvName) == "sliding-window"
+
+	windowSize := tunerservice.DefaultWindowSize
+	if v := os.Getenv(tunerservice.WindowSizeEnvName); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			windowSize = n
+		}
+	}
+
+	residualThreshold := tunerservice.DefaultResidualThreshold
+	if v := os.Getenv(tunerservice.ResidualThresholdEnvName); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+			residualThreshold = f
+		}
+	}
+
+	service := tunerservice.NewTunerService(warmUpCycles, initObs, holdBack, useSliding, windowSize, residualThreshold)
 	server := tunerservice.NewTunerServer(service)
 
+	estimatorMode := tunerservice.DefaultEstimatorMode
+	if useSliding {
+		estimatorMode = "sliding-window"
+	}
 	slog.Info("Starting TunerService",
 		"host", host, "port", port,
 		"warmUpCycles", warmUpCycles,
 		"initObs", initObs,
-		"holdBack", holdBack)
+		"holdBack", holdBack,
+		"estimatorMode", estimatorMode,
+		"windowSize", windowSize,
+		"residualThreshold", residualThreshold)
 	if err := server.Run(host, port); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
