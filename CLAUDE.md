@@ -73,8 +73,11 @@ The primary deployment is as a sidecar container in the `inferno` pod (see `gith
 | `CONFIG_DATA_DIR` | Directory with JSON config files | `config-data` (`/etc/tuner/config` in inferno pod) |
 | `TUNER_HOST` / `TUNER_PORT` | Tuner REST server address | `localhost:8081` (`localhost:3304` in inferno pod) |
 | `TUNER_WARM_UP_CYCLES` | Number of accepted EKF updates during which the NIS gate is disabled | `5` |
-| `TUNER_INIT_OBS` | Number of observations to collect before fitting initial EKF parameters via Nelder-Mead (variables are scaled by the starting point for well-conditioned simplex) | `5` |
+| `TUNER_INIT_OBS` | Number of observations to collect before fitting initial parameters via Nelder-Mead | `5` |
 | `TUNER_INIT_HOLD_BACK` | If `true`, report `warmingUp=true` during collection (controller skips optimize+actuate). If `false`, controller proceeds with static model-data during collection. | `true` |
+| `TUNER_ESTIMATOR_MODE` | Estimation backend: `ekf` or `sliding-window` | `ekf` |
+| `TUNER_WINDOW_SIZE` | (SWNM) Sliding window capacity | `10` |
+| `TUNER_RESIDUAL_THRESHOLD` | (SWNM) Per-observation relative error cutoff for outlier rejection | `0.5` |
 | `COLLECTOR_HOST` / `COLLECTOR_PORT` | Prometheus collector address | — |
 | `TOKEN` | Bearer token for Prometheus | — |
 | `PROMETHEUS_ADDRESS` | Prometheus server URL | — |
