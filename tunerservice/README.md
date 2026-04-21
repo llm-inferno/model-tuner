@@ -119,6 +119,8 @@ Intended usage from the control-loop `Controller`:
 
 **Seeding** — the `TUNER_INIT_OBS` collection-phase observations pre-fill the sliding window and the `InitEstimator`'s fit result seeds the warm-start `x0`. `IsReady()` returns `true` immediately after seeding — no window-filling phase.
 
+**EKF fallback on poor init fit** — when the `InitEstimator`'s Nelder-Mead objective value (`funcValue`) exceeds `TUNER_INIT_FIT_THRESHOLD` (default 10.0), the `(model, accelerator)` pair is permanently routed to EKF instead of SWNM. This handles the low-utilisation identifiability problem: when observations span a narrow RPM range, the loss surface is flat and Nelder-Mead converges to a degenerate solution that SWNM's warm-start would then propagate. A `funcValue` of 10.0 corresponds roughly to 100% average relative error across 5 observations. Set `TUNER_INIT_FIT_THRESHOLD=0` to disable the fallback and always use SWNM.
+
 ## Warm-up Phases
 
 ### EKF mode
@@ -167,6 +169,7 @@ Filter and model parameters are loaded from `default-config-data.json` in the di
 | `TUNER_ESTIMATOR_MODE` | Estimation backend: `ekf` or `sliding-window` | `ekf` |
 | `TUNER_WINDOW_SIZE` | (SWNM) Number of observations in the sliding window | `10` |
 | `TUNER_RESIDUAL_THRESHOLD` | (SWNM) Per-observation relative error cutoff for outlier rejection | `0.5` |
+| `TUNER_INIT_FIT_THRESHOLD` | (SWNM) Nelder-Mead objective threshold; if `InitEstimator.Fit()` exceeds this the pair falls back to EKF permanently. `0` disables. | `10.0` |
 
 ## Running the Demo
 
