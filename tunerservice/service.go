@@ -58,8 +58,11 @@ func (ts *TunerService) slidingEstimatorFor(key string, ie *InitEstimator) *Slid
 	if swe, ok := ts.slidingEstimators[key]; ok {
 		return swe
 	}
-	swe := NewSlidingWindowEstimator(ts.windowSize, ts.residualThreshold)
+	swe := NewSlidingWindowEstimator(ts.windowSize, ts.initObs, ts.residualThreshold)
 	swe.Seed(ie.observations)
+	if fitted, err := ie.Fit(); err == nil {
+		swe.SeedLastFit(fitted)
+	}
 	ts.slidingEstimators[key] = swe
 	return swe
 }

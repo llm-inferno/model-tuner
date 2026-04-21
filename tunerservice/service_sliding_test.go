@@ -25,38 +25,31 @@ func makeTestSpec(model, acc string, lambda, ttft, itl float32, inTok, outTok, m
 	}
 }
 
-// TestTunerService_SWNM_ReturnsParamsAfterWindowFills verifies that Tune() returns
-// parameters once the sliding window is full and returns an error while it is filling.
-func TestTunerService_SWNM_ReturnsParamsAfterWindowFills(t *testing.T) {
+// TestTunerService_SWNM_ReturnsParamsAfterInitPhase verifies that Tune() returns
+// parameters as soon as the init phase completes (minObs=initObs, no extra filling wait).
+func TestTunerService_SWNM_ReturnsParamsAfterInitPhase(t *testing.T) {
 	initObs := 3
 	windowSize := 5
 	ts := NewTunerService(0, initObs, false, true, windowSize, DefaultResidualThreshold)
 
 	spec := makeTestSpec("llama", "H100", 15, 55, 6, 120, 700, 64)
 
-	// Cycles 1–3: errors expected. Cycles 1–2 are pure collection. On cycle 3 the
-	// InitEstimator becomes ready, the SWE is seeded (3 obs, windowSize=5), and the
-	// call immediately enters the SWNM path returning a "window filling" error.
-	for i := range initObs {
+	// Cycles 1–2: InitEstimator still collecting — errors expected.
+	for i := range initObs - 1 {
 		_, err := ts.Tune([]optconfig.ServerSpec{spec})
 		if err == nil {
-			t.Fatalf("cycle %d: expected error during warm-up, got nil", i+1)
+			t.Fatalf("cycle %d: expected error during init collection, got nil", i+1)
 		}
 	}
 
-	// Cycle 4: SWE seeded with 3 obs (from InitEstimator), adds 1 more (total=4 < 5) — still filling.
-	_, err := ts.Tune([]optconfig.ServerSpec{spec})
-	if err == nil {
-		t.Fatal("cycle 4: expected error while sliding window filling")
-	}
-
-	// Cycle 5: window reaches 5 — should now return parameters.
+	// Cycle 3: InitEstimator completes, SWE seeded with initObs observations and immediately
+	// ready (minObs=initObs=3) — should return parameters on this very cycle.
 	result, err := ts.Tune([]optconfig.ServerSpec{spec})
 	if err != nil {
-		t.Fatalf("cycle 5: expected parameters, got error: %v", err)
+		t.Fatalf("cycle 3: expected parameters after init phase, got error: %v", err)
 	}
 	if len(result.PerfData) == 0 {
-		t.Fatal("cycle 5: expected non-empty PerfData")
+		t.Fatal("cycle 3: expected non-empty PerfData")
 	}
 	p := result.PerfData[0]
 	if p.PerfParms.Alpha <= 0 || p.PerfParms.Beta <= 0 || p.PerfParms.Gamma <= 0 {
@@ -82,7 +75,7 @@ func TestTunerService_SWNM_FitError_RetainsPreviousParams(t *testing.T) {
 
 	// SWE with windowSize=0: IsReady() returns true (0>=0) but AddObservation immediately
 	// evicts every entry (len>0), so Fit() always sees an empty window and returns an error.
-	swe := NewSlidingWindowEstimator(1, DefaultResidualThreshold)
+	swe := NewSlidingWindowEstimator(1, 1, DefaultResidualThreshold)
 	swe.windowSize = 0
 	ts.slidingEstimators[key] = swe
 
@@ -126,12 +119,12 @@ func TestTunerService_IsWarmingUp_SWNM_WindowNotFull(t *testing.T) {
 		t.Fatal("expected IsWarmingUp=true when InitEstimator ready but SWE not yet created")
 	}
 
-	// SWE created but not full → still warmingUp
-	swe := NewSlidingWindowEstimator(5, DefaultResidualThreshold)
-	swe.Seed(ie.observations) // 3 obs, windowSize=5 → not ready
+	// SWE created but minObs not reached → still warmingUp
+	swe := NewSlidingWindowEstimator(5, 4, DefaultResidualThreshold) // minObs=4 > 3 seeded
+	swe.Seed(ie.observations) // 3 obs < minObs=4 → not ready
 	ts.slidingEstimators[key] = swe
 	if !ts.IsWarmingUp() {
-		t.Fatal("expected IsWarmingUp=true when SWE window not full")
+		t.Fatal("expected IsWarmingUp=true when SWE has fewer than minObs observations")
 	}
 }
 
@@ -146,7 +139,7 @@ func TestTunerService_IsWarmingUp_SWNM_WindowFull(t *testing.T) {
 	ie.observations = []fitObservation{obs, obs, obs}
 	ts.estimators[key] = ie
 
-	swe := NewSlidingWindowEstimator(3, DefaultResidualThreshold)
+	swe := NewSlidingWindowEstimator(3, 1, DefaultResidualThreshold)
 	swe.Seed(ie.observations) // 3 obs, windowSize=3 → ready
 	ts.slidingEstimators[key] = swe
 
