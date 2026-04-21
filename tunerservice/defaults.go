@@ -47,3 +47,12 @@ const (
 	DefaultWindowSize        = 10
 	DefaultResidualThreshold = 0.5
 )
+
+// Environment variable name and default for the init-fit quality threshold.
+// When useSliding=true and InitEstimator.Fit() returns a funcValue above this threshold,
+// the pair is permanently routed to EKF instead of SWNM.
+// Set to 0 to disable the feature.
+const (
+	InitFitThresholdEnvName = "TUNER_INIT_FIT_THRESHOLD"
+	DefaultInitFitThreshold = 10.0
+)

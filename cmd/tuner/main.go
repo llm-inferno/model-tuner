@@ -55,7 +55,14 @@ func main() {
 		}
 	}
 
-	service := tunerservice.NewTunerService(warmUpCycles, initObs, holdBack, useSliding, windowSize, residualThreshold)
+	initFitThreshold := tunerservice.DefaultInitFitThreshold
+	if v := os.Getenv(tunerservice.InitFitThresholdEnvName); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 {
+			initFitThreshold = f
+		}
+	}
+
+	service := tunerservice.NewTunerService(warmUpCycles, initObs, holdBack, useSliding, windowSize, residualThreshold, initFitThreshold)
 	server := tunerservice.NewTunerServer(service)
 
 	estimatorMode := tunerservice.DefaultEstimatorMode
@@ -69,7 +76,8 @@ func main() {
 		"holdBack", holdBack,
 		"estimatorMode", estimatorMode,
 		"windowSize", windowSize,
-		"residualThreshold", residualThreshold)
+		"residualThreshold", residualThreshold,
+		"initFitThreshold", initFitThreshold)
 	if err := server.Run(host, port); err != nil {
 		log.Fatalf("server error: %v", err)
 	}

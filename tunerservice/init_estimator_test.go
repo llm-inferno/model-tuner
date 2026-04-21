@@ -252,7 +252,7 @@ func TestInitEstimator_Fit_PoorStartingPoint(t *testing.T) {
 }
 
 func TestTunerService_IsWarmingUp_DuringCollection(t *testing.T) {
-	ts := NewTunerService(3, 3, true, false, DefaultWindowSize, DefaultResidualThreshold)
+	ts := NewTunerService(3, 3, true, false, DefaultWindowSize, DefaultResidualThreshold, 0)
 	key := makeKey("mymodel", "myacc")
 	ts.estimators[key] = NewInitEstimator(3, true)
 	if !ts.IsWarmingUp() {
@@ -261,10 +261,40 @@ func TestTunerService_IsWarmingUp_DuringCollection(t *testing.T) {
 }
 
 func TestTunerService_IsWarmingUp_HoldBackFalse(t *testing.T) {
-	ts := NewTunerService(3, 3, false, false, DefaultWindowSize, DefaultResidualThreshold)
+	ts := NewTunerService(3, 3, false, false, DefaultWindowSize, DefaultResidualThreshold, 0)
 	key := makeKey("mymodel", "myacc")
 	ts.estimators[key] = NewInitEstimator(3, false)
 	if ts.IsWarmingUp() {
 		t.Fatal("expected IsWarmingUp=false when holdBack=false")
+	}
+}
+
+func TestInitEstimator_LastFitFuncValue_ZeroBeforeFit(t *testing.T) {
+	ie := NewInitEstimator(1, false)
+	if ie.LastFitFuncValue() != 0 {
+		t.Errorf("expected 0 before Fit(), got %f", ie.LastFitFuncValue())
+	}
+}
+
+func TestInitEstimator_LastFitFuncValue_NonNegativeAfterFit(t *testing.T) {
+	ie := NewInitEstimator(1, false)
+	ie.AddObservation(makeTestEnv(15, 55, 6, 120, 700, 64))
+	if _, err := ie.Fit(); err != nil {
+		t.Fatalf("Fit() returned error: %v", err)
+	}
+	fv := ie.LastFitFuncValue()
+	if fv < 0 {
+		t.Errorf("expected non-negative funcValue after Fit(), got %f", fv)
+	}
+}
+
+func TestInitEstimator_LastFitFuncValue_MaxFloatOnFallback(t *testing.T) {
+	ie := NewInitEstimator(1, false)
+	ie.AddObservation(makeTestEnv(15, 55, 6, 120, 700, 64))
+	// x0=[0,0,0] forces scale=0 so all unscaled params are 0; the non-positive-params
+	// guard in fitWithX0 fires, sets lastFitFuncValue=math.MaxFloat64, and falls back to guessInitState.
+	ie.fitWithX0([]float64{0, 0, 0})
+	if ie.LastFitFuncValue() != math.MaxFloat64 {
+		t.Errorf("expected math.MaxFloat64 after fallback, got %f", ie.LastFitFuncValue())
 	}
 }

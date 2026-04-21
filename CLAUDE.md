@@ -78,6 +78,7 @@ The primary deployment is as a sidecar container in the `inferno` pod (see `gith
 | `TUNER_ESTIMATOR_MODE` | Estimation backend: `ekf` or `sliding-window` | `ekf` |
 | `TUNER_WINDOW_SIZE` | (SWNM) Sliding window capacity | `10` |
 | `TUNER_RESIDUAL_THRESHOLD` | (SWNM) Per-observation relative error cutoff for outlier rejection | `0.5` |
+| `TUNER_INIT_FIT_THRESHOLD` | (SWNM) If `InitEstimator.Fit()` objective value exceeds this, the pair is permanently routed to EKF instead. Set to `0` to disable. | `10.0` |
 | `COLLECTOR_HOST` / `COLLECTOR_PORT` | Prometheus collector address | — |
 | `TOKEN` | Bearer token for Prometheus | — |
 | `PROMETHEUS_ADDRESS` | Prometheus server URL | — |

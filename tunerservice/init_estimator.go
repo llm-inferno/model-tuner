@@ -43,7 +43,8 @@ type InitEstimator struct {
 	observations []fitObservation
 	minObs       int  // minimum K before Fit(); K<3 may underconstraint the 3-param fit
 	holdBack     bool
-	fitDone      bool // set after the first Fit() call to prevent repeated fitting
+	fitDone          bool    // set after the first Fit() call to prevent repeated fitting
+	lastFitFuncValue float64 // objective value from most recent Fit(); 0 before first call, math.MaxFloat64 on fallback
 }
 
 // NewInitEstimator creates an InitEstimator with the given minimum observation count and hold-back flag.
@@ -91,6 +92,10 @@ func (ie *InitEstimator) MinObs() int { return ie.minObs }
 
 // FitDone returns true if Fit() has already been called (regardless of success or failure).
 func (ie *InitEstimator) FitDone() bool { return ie.fitDone }
+
+// LastFitFuncValue returns the Nelder-Mead objective value from the most recent Fit() call.
+// Returns 0 if Fit() has not been called yet, math.MaxFloat64 if the fit fell back to guessInitState.
+func (ie *InitEstimator) LastFitFuncValue() float64 { return ie.lastFitFuncValue }
 
 // Fit runs Nelder-Mead minimisation over all accumulated observations to find the
 // (alpha, beta, gamma) that best explains all K observations jointly via the full
@@ -146,6 +151,7 @@ func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
 	result, err := optimize.Minimize(problem, scaledX0, settings, &optimize.NelderMead{})
 	if err != nil {
 		// Genuine pre-flight failure (ill-formed problem or settings); result may be nil.
+		ie.lastFitFuncValue = math.MaxFloat64
 		slog.Warn("InitEstimator: Nelder-Mead pre-flight error, using guessInitState fallback", "err", err)
 		if fallback := guessInitState(ie.observations[0].toEnv()); fallback != nil {
 			return fallback, nil
@@ -158,6 +164,7 @@ func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
 	case optimize.Success, optimize.FunctionConvergence, optimize.FunctionEvaluationLimit:
 		// acceptable termination
 	default:
+		ie.lastFitFuncValue = math.MaxFloat64
 		slog.Warn("InitEstimator: unexpected Nelder-Mead termination status, using guessInitState fallback",
 			"status", result.Status)
 		if fallback := guessInitState(ie.observations[0].toEnv()); fallback != nil {
@@ -173,6 +180,7 @@ func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
 	}
 	x := unscaled
 	if x[0] <= 0 || x[1] <= 0 || x[2] <= 0 {
+		ie.lastFitFuncValue = math.MaxFloat64
 		slog.Warn("InitEstimator: Nelder-Mead returned non-positive params, using guessInitState fallback",
 			"alpha", x[0], "beta", x[1], "gamma", x[2])
 		if fallback := guessInitState(ie.observations[0].toEnv()); fallback != nil {
@@ -181,6 +189,7 @@ func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
 		return nil, fmt.Errorf("Nelder-Mead returned non-positive params and guessInitState returned nil")
 	}
 
+	ie.lastFitFuncValue = result.F
 	slog.Info("InitEstimator: Fit complete",
 		"alpha", x[0], "beta", x[1], "gamma", x[2],
 		"observations", len(ie.observations), "funcValue", result.F)

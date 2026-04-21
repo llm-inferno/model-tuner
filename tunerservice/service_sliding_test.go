@@ -30,7 +30,7 @@ func makeTestSpec(model, acc string, lambda, ttft, itl float32, inTok, outTok, m
 func TestTunerService_SWNM_ReturnsParamsAfterInitPhase(t *testing.T) {
 	initObs := 3
 	windowSize := 5
-	ts := NewTunerService(0, initObs, false, true, windowSize, DefaultResidualThreshold)
+	ts := NewTunerService(0, initObs, false, true, windowSize, DefaultResidualThreshold, 0)
 
 	spec := makeTestSpec("llama", "H100", 15, 55, 6, 120, 700, 64)
 
@@ -61,7 +61,7 @@ func TestTunerService_SWNM_ReturnsParamsAfterInitPhase(t *testing.T) {
 // TestTunerService_SWNM_FitError_RetainsPreviousParams verifies that when Fit() returns
 // an error the paramStore entry for that key is left unchanged (previous estimate retained).
 func TestTunerService_SWNM_FitError_RetainsPreviousParams(t *testing.T) {
-	ts := NewTunerService(0, 1, false, true, 1, DefaultResidualThreshold)
+	ts := NewTunerService(0, 1, false, true, 1, DefaultResidualThreshold, 0)
 	model, acc := "llama", "H100"
 	key := makeKey(model, acc)
 
@@ -98,7 +98,7 @@ func TestTunerService_SWNM_FitError_RetainsPreviousParams(t *testing.T) {
 // TestTunerService_IsWarmingUp_SWNM_WindowNotFull verifies that IsWarmingUp returns
 // true while the sliding window is being filled.
 func TestTunerService_IsWarmingUp_SWNM_WindowNotFull(t *testing.T) {
-	ts := NewTunerService(3, 3, true, true, 5, DefaultResidualThreshold)
+	ts := NewTunerService(3, 3, true, true, 5, DefaultResidualThreshold, 0)
 	key := makeKey("mymodel", "myacc")
 	ts.estimators[key] = NewInitEstimator(3, true)
 
@@ -131,7 +131,7 @@ func TestTunerService_IsWarmingUp_SWNM_WindowNotFull(t *testing.T) {
 // TestTunerService_IsWarmingUp_SWNM_WindowFull verifies that IsWarmingUp returns false
 // once the sliding window is full.
 func TestTunerService_IsWarmingUp_SWNM_WindowFull(t *testing.T) {
-	ts := NewTunerService(3, 3, true, true, 3, DefaultResidualThreshold)
+	ts := NewTunerService(3, 3, true, true, 3, DefaultResidualThreshold, 0)
 	key := makeKey("mymodel", "myacc")
 
 	ie := NewInitEstimator(3, true)
@@ -145,5 +145,84 @@ func TestTunerService_IsWarmingUp_SWNM_WindowFull(t *testing.T) {
 
 	if ts.IsWarmingUp() {
 		t.Fatal("expected IsWarmingUp=false when SWE window is full")
+	}
+}
+
+// TestTunerService_SWNM_HighFuncValue_FallsBackToEKF verifies that a pair whose
+// InitEstimator.Fit() exceeds the threshold is permanently routed to EKF.
+func TestTunerService_SWNM_HighFuncValue_FallsBackToEKF(t *testing.T) {
+	// Use initObs=2 and two physically inconsistent specs (different ttft/itl combinations
+	// that can't be simultaneously fit by the same alpha/beta/gamma with zero residual),
+	// then set threshold=0.0001 which a non-zero residual will exceed.
+	// With 2 observations there are 4 model equations for 3 unknowns, so the optimizer
+	// produces a non-zero funcValue that exceeds any small threshold.
+	ts := NewTunerService(0, 2, false, true, DefaultWindowSize, DefaultResidualThreshold, 0.0001)
+	spec1 := makeTestSpec("llama", "H100", 15, 55, 6, 120, 700, 64)
+	spec2 := makeTestSpec("llama", "H100", 30, 120, 12, 200, 1500, 64) // different operating point
+
+	// First cycle: adds first observation; InitEstimator not yet ready.
+	ts.Tune([]optconfig.ServerSpec{spec1})
+
+	// Second cycle: InitEstimator completes (2 obs), slidingEstimatorFor detects high funcValue.
+	ts.Tune([]optconfig.ServerSpec{spec2})
+
+	key := makeKey("llama", "H100")
+	if !ts.ekfFallbacks[key] {
+		t.Fatal("expected ekfFallbacks[key]=true after high funcValue init fit")
+	}
+
+	if _, hasSWE := ts.slidingEstimators[key]; hasSWE {
+		t.Error("expected no SWE stored after EKF fallback")
+	}
+
+	// Third cycle: SWNM path is bypassed (ekfFallbacks[key]=true); tuneGroup routes to EKF.
+	// We don't assert on the result here because the EKF requires config files that are
+	// only available from the project root — we just verify no panic/SWE regression.
+	ts.Tune([]optconfig.ServerSpec{spec1})
+	if _, hasSWE := ts.slidingEstimators[key]; hasSWE {
+		t.Error("SWE should still not be stored on subsequent cycles after EKF fallback")
+	}
+}
+
+// TestTunerService_IsWarmingUp_SWNM_EKFFallbackPair verifies that a pair routed to
+// EKF fallback does not permanently hold IsWarmingUp=true.
+func TestTunerService_IsWarmingUp_SWNM_EKFFallbackPair(t *testing.T) {
+	ts := NewTunerService(0, 1, false, true, DefaultWindowSize, DefaultResidualThreshold, 0)
+	key := makeKey("llama", "H100")
+
+	// Mark the pair as EKF fallback (simulating what slidingEstimatorFor does).
+	ie := NewInitEstimator(1, false)
+	ie.observations = []fitObservation{
+		{Lambda: 15, AvgTTFT: 55, AvgITL: 6, AvgInputTokens: 120, AvgOutputTokens: 700, MaxBatch: 64},
+	}
+	ts.estimators[key] = ie
+	ts.ekfFallbacks[key] = true
+
+	// No SWE stored — IsWarmingUp must not return true just because SWE is absent.
+	if ts.IsWarmingUp() {
+		t.Fatal("expected IsWarmingUp=false for EKF-fallback pair with warmUpCycles=0")
+	}
+}
+
+// TestTunerService_SWNM_ZeroThreshold_DisablesFallback verifies that threshold=0
+// disables the feature: SWNM is used regardless of funcValue.
+func TestTunerService_SWNM_ZeroThreshold_DisablesFallback(t *testing.T) {
+	ts := NewTunerService(0, 1, false, true, DefaultWindowSize, DefaultResidualThreshold, 0)
+	spec := makeTestSpec("llama", "H100", 15, 55, 6, 120, 700, 64)
+
+	result, err := ts.Tune([]optconfig.ServerSpec{spec})
+	if err != nil {
+		t.Fatalf("expected params with threshold=0, got error: %v", err)
+	}
+	if len(result.PerfData) == 0 {
+		t.Fatal("expected non-empty PerfData")
+	}
+
+	key := makeKey("llama", "H100")
+	if ts.ekfFallbacks[key] {
+		t.Error("ekfFallbacks should not be set when threshold=0")
+	}
+	if _, hasSWE := ts.slidingEstimators[key]; !hasSWE {
+		t.Error("SWE should be stored when threshold=0")
 	}
 }
