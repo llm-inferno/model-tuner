@@ -83,9 +83,9 @@ Returns whether the tuner is still in a warm-up phase (collection or EKF warm-up
 Returns `true` if:
 - any pair is still collecting initial observations (`TUNER_INIT_HOLD_BACK=true` and fewer than `TUNER_INIT_OBS` observations accumulated), or
 - **EKF mode:** any pair has fewer than `TUNER_WARM_UP_CYCLES` accepted EKF updates (NIS gate is disabled during this window), or
-- **SWNM mode:** any pair whose `InitEstimator` has completed does not yet have a full sliding window (`TUNER_WINDOW_SIZE` observations).
+- **SWNM mode:** (no extra warmup phase; `IsReady()` returns `true` immediately after seeding with `TUNER_INIT_OBS` observations)
 
-Returns `false` once all pairs have graduated to normal operation, or if `TUNER_WARM_UP_CYCLES=0` (EKF) / window is full (SWNM).
+Returns `false` once all pairs have graduated to normal operation, or if `TUNER_WARM_UP_CYCLES=0` (EKF) / collection phase complete (SWNM).
 
 ## Control-Loop Integration
 
@@ -113,9 +113,11 @@ Intended usage from the control-loop `Controller`:
 
 **Continuous re-fitting** — every tuning cycle, Nelder-Mead is run over the `TUNER_WINDOW_SIZE` (default 10) most recent observations. No covariance matrices to configure; convergence failure simply retains the previous estimate.
 
+**Warm-start** — each `Fit()` call uses the previous fitted result as the Nelder-Mead starting point (`x0`), falling back to a heuristic estimate only on the very first call. This prevents Nelder-Mead from restarting from a noisy single-observation estimate each cycle.
+
 **Residual-based outlier rejection** — after an initial fit, the observation with the highest relative squared error is dropped if its residual exceeds `TUNER_RESIDUAL_THRESHOLD` (default 0.5), then Nelder-Mead runs once more on the cleaned window. Only one observation is removed per cycle to avoid discarding good observations that appear anomalous only because the initial fit was corrupted by the outlier.
 
-**Seeding** — the `TUNER_INIT_OBS` collection-phase observations pre-fill the sliding window, so the first estimate is available as soon as the window reaches capacity.
+**Seeding** — the `TUNER_INIT_OBS` collection-phase observations pre-fill the sliding window and the `InitEstimator`'s fit result seeds the warm-start `x0`. `IsReady()` returns `true` immediately after seeding — no window-filling phase.
 
 ## Warm-up Phases
 
@@ -140,10 +142,9 @@ hold-back cycles = TUNER_INIT_OBS + TUNER_WARM_UP_CYCLES  (defaults: 5 + 5 = 10)
 | Phase | Duration | Behavior |
 |---|---|---|
 | **Collection** | `TUNER_INIT_OBS` cycles (default 5) | Observations accumulated; `GET /warmup` returns `true` if `TUNER_INIT_HOLD_BACK=true` |
-| **Window filling** | up to `TUNER_WINDOW_SIZE − TUNER_INIT_OBS` cycles | Sliding window fills after seeding from collection observations; `GET /warmup` returns `true` |
-| **Normal** | ongoing | Nelder-Mead re-fit every cycle on full window; `GET /warmup` returns `false` |
+| **Normal** | ongoing | Nelder-Mead re-fit every cycle; `GET /warmup` returns `false` |
 
-When `TUNER_INIT_OBS >= TUNER_WINDOW_SIZE`, the collection observations fill the window completely and the window-filling phase is skipped — the first estimate is produced immediately after collection.
+The sliding window is seeded with the `TUNER_INIT_OBS` collection observations and `IsReady()` is `true` immediately — there is no window-filling phase.
 
 Set `TUNER_INIT_HOLD_BACK=false` to let the controller proceed with static model data during collection instead of holding back.
 

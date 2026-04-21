@@ -16,18 +16,36 @@ import (
 type SlidingWindowEstimator struct {
 	window            []fitObservation
 	windowSize        int
+	minObs            int     // minimum observations before IsReady(); <= windowSize
 	residualThreshold float64
+	lastFit           []float64 // warm-start x0 from previous Fit result
 }
 
-// NewSlidingWindowEstimator creates a SlidingWindowEstimator with the given window capacity
-// and residual outlier rejection threshold (relative error, e.g. 0.5 = 50%).
-func NewSlidingWindowEstimator(windowSize int, residualThreshold float64) *SlidingWindowEstimator {
+// NewSlidingWindowEstimator creates a SlidingWindowEstimator with the given window capacity,
+// minimum observations before IsReady(), and residual outlier rejection threshold.
+// minObs must be >= 1; if 0 it defaults to 1. windowSize controls eviction capacity.
+func NewSlidingWindowEstimator(windowSize, minObs int, residualThreshold float64) *SlidingWindowEstimator {
 	if windowSize < 1 {
 		windowSize = 1
 	}
+	if minObs < 1 {
+		minObs = 1
+	}
+	if minObs > windowSize {
+		minObs = windowSize
+	}
 	return &SlidingWindowEstimator{
 		windowSize:        windowSize,
+		minObs:            minObs,
 		residualThreshold: residualThreshold,
+	}
+}
+
+// SeedLastFit sets the warm-start x0 for the first Fit() call, e.g. from InitEstimator.Fit().
+// Without this, the first Fit() falls back to guessInitState which can yield a degenerate result.
+func (swe *SlidingWindowEstimator) SeedLastFit(x []float64) {
+	if len(x) > 0 {
+		swe.lastFit = x
 	}
 }
 
@@ -64,9 +82,9 @@ func (swe *SlidingWindowEstimator) AddObservation(env *core.EnvironmentPrefillDe
 	}
 }
 
-// IsReady returns true once the window holds at least windowSize observations.
+// IsReady returns true once the window holds at least minObs observations.
 func (swe *SlidingWindowEstimator) IsReady() bool {
-	return len(swe.window) >= swe.windowSize
+	return len(swe.window) >= swe.minObs
 }
 
 // Fit runs Nelder-Mead on the current window, performs one residual-based outlier
@@ -77,7 +95,10 @@ func (swe *SlidingWindowEstimator) Fit() ([]float64, error) {
 		return nil, fmt.Errorf("no observations in window")
 	}
 
-	x0 := guessInitState(swe.window[len(swe.window)-1].toEnv())
+	x0 := swe.lastFit
+	if x0 == nil {
+		x0 = guessInitState(swe.window[len(swe.window)-1].toEnv())
+	}
 	if x0 == nil {
 		x0 = []float64{5.0, 0.05, 0.0005}
 	}
@@ -97,6 +118,7 @@ func (swe *SlidingWindowEstimator) Fit() ([]float64, error) {
 		}
 	}
 
+	swe.lastFit = fitted
 	return fitted, nil
 }
 

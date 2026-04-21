@@ -50,7 +50,7 @@ The `tunerservice` package is a passive HTTP server designed for integration wit
 - `POST /tune` — accepts `[]config.ServerSpec`, runs tuning, stores results in `ParameterStore`
 - `POST /merge` — accepts current `config.ModelData`, returns it with tuned `PerfParms` overlaid from `ParameterStore`
 - `GET /getparams?model=<name>&accelerator=<acc>` — retrieves the last stored parameters for a pair
-- `GET /warmup` — returns whether any pair is still in warm-up (collection, EKF warm-up, or SWNM window-filling phase)
+- `GET /warmup` — returns whether any pair is still in warm-up (collection or EKF warm-up phase)
 
 **Two estimation backends** — select via `TUNER_ESTIMATOR_MODE`:
 - `ekf` (default) — Extended Kalman Filter with NIS-gate outlier rejection

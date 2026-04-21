@@ -8,9 +8,9 @@ import (
 	"github.com/llm-inferno/queue-analysis/pkg/analyzer"
 )
 
-// TestSlidingWindowEstimator_IsReady verifies that IsReady requires a full window.
+// TestSlidingWindowEstimator_IsReady verifies that IsReady gates on minObs, not windowSize.
 func TestSlidingWindowEstimator_IsReady(t *testing.T) {
-	swe := NewSlidingWindowEstimator(3, 0.5)
+	swe := NewSlidingWindowEstimator(5, 3, 0.5) // windowSize=5, minObs=3
 	env := makeTestEnv(10, 50, 5, 100, 500, 64)
 
 	if swe.IsReady() {
@@ -18,18 +18,18 @@ func TestSlidingWindowEstimator_IsReady(t *testing.T) {
 	}
 	swe.AddObservation(env)
 	if swe.IsReady() {
-		t.Fatal("should not be ready with 1 observation")
+		t.Fatal("should not be ready with 1 observation (minObs=3)")
 	}
 	swe.AddObservation(env)
 	swe.AddObservation(env)
 	if !swe.IsReady() {
-		t.Fatal("should be ready with 3 observations (windowSize=3)")
+		t.Fatal("should be ready with 3 observations (minObs=3, windowSize=5)")
 	}
 }
 
 // TestSlidingWindowEstimator_AddObservation_Caps verifies FIFO eviction at window capacity.
 func TestSlidingWindowEstimator_AddObservation_Caps(t *testing.T) {
-	swe := NewSlidingWindowEstimator(3, 0.5)
+	swe := NewSlidingWindowEstimator(3, 1, 0.5)
 	e1 := makeTestEnv(10, 50, 5, 100, 500, 64)
 	e2 := makeTestEnv(20, 60, 6, 110, 510, 64)
 	e3 := makeTestEnv(30, 70, 7, 120, 520, 64)
@@ -54,7 +54,7 @@ func TestSlidingWindowEstimator_AddObservation_Caps(t *testing.T) {
 
 // TestSlidingWindowEstimator_AddObservation_IgnoresNilAndInvalid mirrors the InitEstimator test.
 func TestSlidingWindowEstimator_AddObservation_IgnoresNilAndInvalid(t *testing.T) {
-	swe := NewSlidingWindowEstimator(3, 0.5)
+	swe := NewSlidingWindowEstimator(3, 1, 0.5)
 	swe.AddObservation(nil)
 	invalid := core.NewEnvironmentPrefillDecode(10, 0, 0, 64, 100, 500, 0, 0)
 	swe.AddObservation(invalid)
@@ -65,7 +65,7 @@ func TestSlidingWindowEstimator_AddObservation_IgnoresNilAndInvalid(t *testing.T
 
 // TestSlidingWindowEstimator_Seed verifies that seeding caps at windowSize.
 func TestSlidingWindowEstimator_Seed(t *testing.T) {
-	swe := NewSlidingWindowEstimator(3, 0.5)
+	swe := NewSlidingWindowEstimator(3, 1, 0.5)
 	obs := []fitObservation{
 		{Lambda: 10}, {Lambda: 20}, {Lambda: 30}, {Lambda: 40}, {Lambda: 50},
 	}
@@ -81,7 +81,7 @@ func TestSlidingWindowEstimator_Seed(t *testing.T) {
 
 // TestSlidingWindowEstimator_Fit_EmptyError verifies Fit() returns an error on empty window.
 func TestSlidingWindowEstimator_Fit_EmptyError(t *testing.T) {
-	swe := NewSlidingWindowEstimator(3, 0.5)
+	swe := NewSlidingWindowEstimator(3, 1, 0.5)
 	_, err := swe.Fit()
 	if err == nil {
 		t.Fatal("expected error from Fit() on empty window")
@@ -108,7 +108,7 @@ func TestSlidingWindowEstimator_Fit_ParameterRecovery(t *testing.T) {
 		{lambda: 12, inTok: 100, outTok: 750},
 	}
 
-	swe := NewSlidingWindowEstimator(len(ops), 0.5)
+	swe := NewSlidingWindowEstimator(len(ops), 1, 0.5)
 	for _, op := range ops {
 		qConfig := &analyzer.Configuration{
 			MaxBatchSize: maxBatch,
@@ -170,7 +170,7 @@ func TestSlidingWindowEstimator_Fit_ResidualRejection(t *testing.T) {
 		{lambda: 12, inTok: 100, outTok: 750},
 	}
 
-	swe := NewSlidingWindowEstimator(5, 0.5) // window=5, 4 clean + 1 outlier
+	swe := NewSlidingWindowEstimator(5, 1, 0.5) // window=5, 4 clean + 1 outlier
 
 	addSynthetic := func(op opPoint) {
 		qConfig := &analyzer.Configuration{
@@ -224,7 +224,7 @@ func TestSlidingWindowEstimator_Fit_ResidualRejection(t *testing.T) {
 // threshold<=0 disables outlier rejection: filterOutliers returns the original slice
 // unchanged without evaluating any residuals.
 func TestSlidingWindowEstimator_FilterOutliers_DisabledWhenThresholdZero(t *testing.T) {
-	swe := NewSlidingWindowEstimator(3, 0) // threshold=0 — outlier rejection disabled
+	swe := NewSlidingWindowEstimator(3, 1, 0) // threshold=0 — outlier rejection disabled
 	obs := []fitObservation{
 		{Lambda: 10, AvgTTFT: 50, AvgITL: 5, AvgInputTokens: 100, AvgOutputTokens: 500, MaxBatch: 64},
 		{Lambda: 20, AvgTTFT: 60, AvgITL: 6, AvgInputTokens: 110, AvgOutputTokens: 510, MaxBatch: 64},
