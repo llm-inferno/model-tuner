@@ -258,7 +258,7 @@ func TestInitEstimator_LastFitFuncValue_NonNegativeAfterFit(t *testing.T) {
 func TestInitEstimator_LastFitFuncValue_MaxFloatOnFallback(t *testing.T) {
 	ie := NewInitEstimator(1, false)
 	ie.AddObservation(makeTestEnv(15, 55, 6, 120, 700, 64))
-	ie.fitWithX0([]float64{0, 0, 0})
+	_, _ = ie.fitWithX0([]float64{0, 0, 0})
 	if ie.LastFitFuncValue() != math.MaxFloat64 {
 		t.Errorf("expected math.MaxFloat64 after fallback, got %f", ie.LastFitFuncValue())
 	}

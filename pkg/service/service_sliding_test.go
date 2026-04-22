@@ -147,8 +147,8 @@ func TestTunerService_SWNM_HighFuncValue_FallsBackToEKF(t *testing.T) {
 	spec1 := makeTestSpec("llama", "H100", 15, 55, 6, 120, 700, 64)
 	spec2 := makeTestSpec("llama", "H100", 30, 120, 12, 200, 1500, 64)
 
-	ts.Tune([]optconfig.ServerSpec{spec1})
-	ts.Tune([]optconfig.ServerSpec{spec2})
+	_, _ = ts.Tune([]optconfig.ServerSpec{spec1})
+	_, _ = ts.Tune([]optconfig.ServerSpec{spec2})
 
 	key := makeKey("llama", "H100")
 	if !ts.ekfFallbacks[key] {
@@ -159,7 +159,7 @@ func TestTunerService_SWNM_HighFuncValue_FallsBackToEKF(t *testing.T) {
 		t.Error("expected no SWE stored after EKF fallback")
 	}
 
-	ts.Tune([]optconfig.ServerSpec{spec1})
+	_, _ = ts.Tune([]optconfig.ServerSpec{spec1})
 	if _, hasSWE := ts.slidingEstimators[key]; hasSWE {
 		t.Error("SWE should still not be stored on subsequent cycles after EKF fallback")
 	}

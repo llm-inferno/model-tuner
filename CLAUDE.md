@@ -21,7 +21,7 @@ go run ./demos/benchmark
 go run ./demos/tunerservice
 ```
 
-Unit tests exist for `tunerservice/` (`go test ./tunerservice/...`). Demo programs in `demos/` are used for broader validation by running them and inspecting their CSV/console output.
+Unit tests exist for `pkg/estimator/` and `pkg/service/` (`go test ./pkg/...`). Demo programs in `demos/` are used for broader validation by running them and inspecting their CSV/console output.
 
 ## Architecture
 
@@ -46,7 +46,11 @@ Observer → Environment → Tuner (EKF predict + update) → GetParams() → Tu
 
 - **`pkg/metrics/`** — Thin Prometheus HTTP client used by `OnlineObserver`.
 
-- **`tunerservice/`** — Gin-based HTTP server for control-loop integration. Accepts `POST /tune` with `[]config.ServerSpec` (ReplicaSpecs from the Collector) and returns updated `config.ModelData` (alpha/beta/gamma per model/accelerator). Also exposes `GET /getparams?model=<name>&accelerator=<acc>` for point lookups.
+- **`pkg/estimator/`** — Pure estimation primitives. `InitEstimator` accumulates K observations then runs Nelder-Mead to fit initial (alpha, beta, gamma). `SlidingWindowEstimator` maintains a fixed-capacity circular buffer and re-fits on every cycle. `GuessInitState` provides an algebraic cold-start estimate from a single observation. No HTTP or optimizer-light dependency.
+
+- **`pkg/service/`** — Orchestration layer. `TunerService` groups replica `ServerSpec`s by (model, accelerator), runs the init phase via `InitEstimator`, then dispatches to either `SlidingWindowEstimator` (SWNM mode) or the EKF `Tuner` (EKF mode). `ParameterStore` holds tuned parameters across cycles. Importable without gin.
+
+- **`tunerservice/`** — Thin Gin HTTP adapter over `pkg/service.TunerService`. Exposes `POST /tune`, `GET /getparams`, `GET /warmup`, `POST /merge`. Contains only routing, handlers, and HTTP constants.
 
 ### Environment variants
 
