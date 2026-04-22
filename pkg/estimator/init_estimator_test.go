@@ -1,4 +1,4 @@
-package tunerservice
+package estimator
 
 import (
 	"math"
@@ -55,7 +55,6 @@ func TestInitEstimator_IsReady(t *testing.T) {
 func TestInitEstimator_AddObservation_IgnoresNilAndInvalid(t *testing.T) {
 	ie := NewInitEstimator(3, true)
 	ie.AddObservation(nil)
-	// invalid env: zero AvgITL (not allowed by Valid())
 	invalid := core.NewEnvironmentPrefillDecode(10, 0, 0, 64, 100, 500, 0, 0)
 	ie.AddObservation(invalid)
 	if len(ie.observations) != 0 {
@@ -85,19 +84,14 @@ func TestInitEstimator_AddObservation_StoresFields(t *testing.T) {
 	}
 }
 
-// TestInitEstimator_Fit_ParameterRecovery generates synthetic observations from known
-// true parameters using the queue analyzer, feeds them to the estimator, and verifies
-// that Fit() recovers the true values within 10% relative error.
 func TestInitEstimator_Fit_ParameterRecovery(t *testing.T) {
-	// True parameters (granite_13b/G2 values from model-data.json)
 	trueAlpha := float32(16.78)
 	trueBeta := float32(0.073)
 	trueGamma := float32(0.00228)
 	maxBatch := 64
 
-	// Operating points: vary token counts and arrival rates to overcome identifiability
 	type opPoint struct {
-		lambda float32 // RPM
+		lambda float32
 		inTok  float32
 		outTok float32
 	}
@@ -154,7 +148,7 @@ func TestInitEstimator_Fit_ParameterRecovery(t *testing.T) {
 		t.Fatalf("expected 3 params, got %d", len(fitted))
 	}
 
-	tolerance := 0.10 // 10% relative error
+	tolerance := 0.10
 	checkParam := func(name string, got, want float64) {
 		t.Helper()
 		relErr := math.Abs(got-want) / want
@@ -168,10 +162,6 @@ func TestInitEstimator_Fit_ParameterRecovery(t *testing.T) {
 	checkParam("gamma", fitted[2], float64(trueGamma))
 }
 
-// TestInitEstimator_Fit_PoorStartingPoint verifies that the scaled Nelder-Mead
-// converges to the true parameters even when x0 is far from the true values.
-// This specifically exercises the scaling fix: without scaling the initial
-// simplex would be degenerate for gamma, causing the optimizer to get stuck.
 func TestInitEstimator_Fit_PoorStartingPoint(t *testing.T) {
 	trueAlpha := float32(16.78)
 	trueBeta := float32(0.073)
@@ -223,11 +213,6 @@ func TestInitEstimator_Fit_PoorStartingPoint(t *testing.T) {
 		ie.AddObservation(env)
 	}
 
-	// Deliberately poor starting point: 17× off on alpha, 7× off on beta, 23× off on gamma.
-	// Without variable scaling the initial simplex would be degenerate (beta and gamma
-	// receive enormous absolute perturbations relative to their magnitude), causing the
-	// optimizer to get stuck. With scaling each dimension starts at 1.0 with a uniform 5%
-	// perturbation, allowing convergence from this far-off starting point.
 	poorX0 := []float64{1.0, 0.01, 0.0001}
 	fitted, err := ie.fitWithX0(poorX0)
 	if err != nil {
@@ -249,24 +234,6 @@ func TestInitEstimator_Fit_PoorStartingPoint(t *testing.T) {
 	checkParam("alpha", fitted[0], float64(trueAlpha))
 	checkParam("beta", fitted[1], float64(trueBeta))
 	checkParam("gamma", fitted[2], float64(trueGamma))
-}
-
-func TestTunerService_IsWarmingUp_DuringCollection(t *testing.T) {
-	ts := NewTunerService(3, 3, true, false, DefaultWindowSize, DefaultResidualThreshold, 0)
-	key := makeKey("mymodel", "myacc")
-	ts.estimators[key] = NewInitEstimator(3, true)
-	if !ts.IsWarmingUp() {
-		t.Fatal("expected IsWarmingUp=true when estimator not ready and holdBack=true")
-	}
-}
-
-func TestTunerService_IsWarmingUp_HoldBackFalse(t *testing.T) {
-	ts := NewTunerService(3, 3, false, false, DefaultWindowSize, DefaultResidualThreshold, 0)
-	key := makeKey("mymodel", "myacc")
-	ts.estimators[key] = NewInitEstimator(3, false)
-	if ts.IsWarmingUp() {
-		t.Fatal("expected IsWarmingUp=false when holdBack=false")
-	}
 }
 
 func TestInitEstimator_LastFitFuncValue_ZeroBeforeFit(t *testing.T) {
@@ -291,9 +258,7 @@ func TestInitEstimator_LastFitFuncValue_NonNegativeAfterFit(t *testing.T) {
 func TestInitEstimator_LastFitFuncValue_MaxFloatOnFallback(t *testing.T) {
 	ie := NewInitEstimator(1, false)
 	ie.AddObservation(makeTestEnv(15, 55, 6, 120, 700, 64))
-	// x0=[0,0,0] forces scale=0 so all unscaled params are 0; the non-positive-params
-	// guard in fitWithX0 fires, sets lastFitFuncValue=math.MaxFloat64, and falls back to guessInitState.
-	ie.fitWithX0([]float64{0, 0, 0})
+	_, _ = ie.fitWithX0([]float64{0, 0, 0})
 	if ie.LastFitFuncValue() != math.MaxFloat64 {
 		t.Errorf("expected math.MaxFloat64 after fallback, got %f", ie.LastFitFuncValue())
 	}

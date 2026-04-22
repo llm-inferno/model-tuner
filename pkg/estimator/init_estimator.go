@@ -1,4 +1,4 @@
-package tunerservice
+package estimator
 
 import (
 	"fmt"
@@ -11,40 +11,13 @@ import (
 	"github.com/llm-inferno/model-tuner/pkg/core"
 )
 
-// fitObservation holds a single operating-point snapshot for use in the Fit objective.
-type fitObservation struct {
-	Lambda          float64 // arrival rate, req/min
-	MaxBatch        int
-	MaxQueueSize    int     // external queue depth (0 = no external queue)
-	AvgInputTokens  float32
-	AvgOutputTokens float32
-	AvgTTFT         float64 // ms
-	AvgITL          float64 // ms
-}
-
-// toEnv converts a fitObservation to an EnvironmentPrefillDecode for use with guessInitState.
-func (fo *fitObservation) toEnv() *core.EnvironmentPrefillDecode {
-	env := core.NewEnvironmentPrefillDecode(
-		float32(fo.Lambda),
-		0, // BatchSize not used
-		0, // AvgQueueTime not available
-		fo.MaxBatch,
-		fo.AvgInputTokens,
-		fo.AvgOutputTokens,
-		float32(fo.AvgTTFT),
-		float32(fo.AvgITL),
-	)
-	env.MaxQueueSize = fo.MaxQueueSize
-	return env
-}
-
 // InitEstimator accumulates observations before the EKF starts and fits initial parameters.
 type InitEstimator struct {
-	observations []fitObservation
-	minObs       int  // minimum K before Fit(); K<3 may underconstraint the 3-param fit
-	holdBack     bool
-	fitDone          bool    // set after the first Fit() call to prevent repeated fitting
-	lastFitFuncValue float64 // objective value from most recent Fit(); 0 before first call, math.MaxFloat64 on fallback
+	observations     []fitObservation
+	minObs           int
+	holdBack         bool
+	fitDone          bool
+	lastFitFuncValue float64
 }
 
 // NewInitEstimator creates an InitEstimator with the given minimum observation count and hold-back flag.
@@ -94,20 +67,19 @@ func (ie *InitEstimator) MinObs() int { return ie.minObs }
 func (ie *InitEstimator) FitDone() bool { return ie.fitDone }
 
 // LastFitFuncValue returns the Nelder-Mead objective value from the most recent Fit() call.
-// Returns 0 if Fit() has not been called yet, math.MaxFloat64 if the fit fell back to guessInitState.
+// Returns 0 if Fit() has not been called yet, math.MaxFloat64 if the fit fell back to GuessInitState.
 func (ie *InitEstimator) LastFitFuncValue() float64 { return ie.lastFitFuncValue }
 
 // Fit runs Nelder-Mead minimisation over all accumulated observations to find the
 // (alpha, beta, gamma) that best explains all K observations jointly via the full
 // queueing model. Returns [alpha, beta, gamma] or an error.
-// Falls back to guessInitState on the first observation if the fit fails.
+// Falls back to GuessInitState on the first observation if the fit fails.
 func (ie *InitEstimator) Fit() ([]float64, error) {
 	if len(ie.observations) == 0 {
 		return nil, fmt.Errorf("no observations to fit")
 	}
 
-	// Starting point: guessInitState on first observation; fall back to a safe default.
-	x0 := guessInitState(ie.observations[0].toEnv())
+	x0 := GuessInitState(ie.observations[0].toEnv())
 	if x0 == nil {
 		x0 = []float64{5.0, 0.05, 0.0005}
 	}
@@ -118,18 +90,11 @@ func (ie *InitEstimator) Fit() ([]float64, error) {
 }
 
 // fitWithX0 runs the Nelder-Mead optimisation starting from the given x0.
-// x0 must be positive (all values > 0); it is used as the variable scale so
-// the optimizer always sees O(1) quantities regardless of parameter magnitude.
-// Requires at least one observation to have been added.
 func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
 	if len(ie.observations) == 0 {
 		return nil, fmt.Errorf("no observations to fit")
 	}
 
-	// Scale variables by x0 so the optimizer sees O(1) quantities.
-	// Nelder-Mead builds its initial simplex with a fixed absolute offset (SimplexSize=0.05)
-	// per dimension. Without scaling, gamma (~0.00005) gets a 100,000% perturbation while
-	// alpha (~5) gets only 1% — a degenerate simplex. x0 is always positive here.
 	scale := make([]float64, len(x0))
 	scaledX0 := make([]float64, len(x0))
 	for i, v := range x0 {
@@ -145,35 +110,29 @@ func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
 	}
 
 	problem := optimize.Problem{Func: scaledObjective}
-	// 500 evaluations bounds worst-case latency (~30ms for K=5 obs) while allowing convergence
-	// for a 3-parameter problem. Nelder-Mead typically terminates via FunctionEvaluationLimit.
 	settings := &optimize.Settings{FuncEvaluations: 500}
 	result, err := optimize.Minimize(problem, scaledX0, settings, &optimize.NelderMead{})
 	if err != nil {
-		// Genuine pre-flight failure (ill-formed problem or settings); result may be nil.
 		ie.lastFitFuncValue = math.MaxFloat64
-		slog.Warn("InitEstimator: Nelder-Mead pre-flight error, using guessInitState fallback", "err", err)
-		if fallback := guessInitState(ie.observations[0].toEnv()); fallback != nil {
+		slog.Warn("InitEstimator: Nelder-Mead pre-flight error, using GuessInitState fallback", "err", err)
+		if fallback := GuessInitState(ie.observations[0].toEnv()); fallback != nil {
 			return fallback, nil
 		}
-		return nil, fmt.Errorf("Nelder-Mead failed and guessInitState returned nil: %w", err)
+		return nil, fmt.Errorf("Nelder-Mead failed and GuessInitState returned nil: %w", err)
 	}
 
-	// gonum always returns a non-nil result when err==nil; verify termination was acceptable.
 	switch result.Status {
 	case optimize.Success, optimize.FunctionConvergence, optimize.FunctionEvaluationLimit:
-		// acceptable termination
 	default:
 		ie.lastFitFuncValue = math.MaxFloat64
-		slog.Warn("InitEstimator: unexpected Nelder-Mead termination status, using guessInitState fallback",
+		slog.Warn("InitEstimator: unexpected Nelder-Mead termination status, using GuessInitState fallback",
 			"status", result.Status)
-		if fallback := guessInitState(ie.observations[0].toEnv()); fallback != nil {
+		if fallback := GuessInitState(ie.observations[0].toEnv()); fallback != nil {
 			return fallback, nil
 		}
-		return nil, fmt.Errorf("Nelder-Mead unexpected status %v and guessInitState returned nil", result.Status)
+		return nil, fmt.Errorf("Nelder-Mead unexpected status %v and GuessInitState returned nil", result.Status)
 	}
 
-	// Unscale the result back to raw parameter space.
 	unscaled := make([]float64, len(result.X))
 	for i := range result.X {
 		unscaled[i] = result.X[i] * scale[i]
@@ -181,12 +140,12 @@ func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
 	x := unscaled
 	if x[0] <= 0 || x[1] <= 0 || x[2] <= 0 {
 		ie.lastFitFuncValue = math.MaxFloat64
-		slog.Warn("InitEstimator: Nelder-Mead returned non-positive params, using guessInitState fallback",
+		slog.Warn("InitEstimator: Nelder-Mead returned non-positive params, using GuessInitState fallback",
 			"alpha", x[0], "beta", x[1], "gamma", x[2])
-		if fallback := guessInitState(ie.observations[0].toEnv()); fallback != nil {
+		if fallback := GuessInitState(ie.observations[0].toEnv()); fallback != nil {
 			return fallback, nil
 		}
-		return nil, fmt.Errorf("Nelder-Mead returned non-positive params and guessInitState returned nil")
+		return nil, fmt.Errorf("Nelder-Mead returned non-positive params and GuessInitState returned nil")
 	}
 
 	ie.lastFitFuncValue = result.F
@@ -222,13 +181,13 @@ func (ie *InitEstimator) objective(x []float64) float64 {
 		if err != nil {
 			return math.MaxFloat64 / 2
 		}
-		metrics, err := qa.Analyze(float32(obs.Lambda / 60)) // RPM → req/sec
+		metrics, err := qa.Analyze(float32(obs.Lambda / 60))
 		if err != nil {
 			return math.MaxFloat64 / 2
 		}
 
 		ttftModel := float64(metrics.AvgTTFT)
-		itlModel := float64(metrics.AvgTokenTime) // AvgTokenTime = ITL
+		itlModel := float64(metrics.AvgTokenTime)
 		ttftObs := obs.AvgTTFT
 		itlObs := obs.AvgITL
 

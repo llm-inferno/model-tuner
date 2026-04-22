@@ -1,4 +1,4 @@
-package tunerservice
+package service
 
 import (
 	"testing"
@@ -6,8 +6,6 @@ import (
 	optconfig "github.com/llm-inferno/optimizer-light/pkg/config"
 )
 
-// TestBuildEnvironments_MaxQueueSizeFromSpec verifies that buildEnvironments
-// propagates MaxQueueSize from the ServerSpec onto the resulting environment.
 func TestBuildEnvironments_MaxQueueSizeFromSpec(t *testing.T) {
 	specs := []optconfig.ServerSpec{
 		{
@@ -31,20 +29,16 @@ func TestBuildEnvironments_MaxQueueSizeFromSpec(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("expected 1 environment, got %d", len(envs))
 	}
-
 	if envs[0].MaxQueueSize != 128 {
 		t.Errorf("MaxQueueSize = %d, want 128", envs[0].MaxQueueSize)
 	}
 }
 
-// TestBuildEnvironments_ZeroMaxQueueSizeWhenUnset verifies that buildEnvironments
-// leaves MaxQueueSize as zero when the ServerSpec does not set it; zero means
-// no external queue (system capacity = MaxBatchSize), consistent with the optimizer.
 func TestBuildEnvironments_ZeroMaxQueueSizeWhenUnset(t *testing.T) {
 	specs := []optconfig.ServerSpec{
 		{
 			Model:        "llama_13b",
-			MaxQueueSize: 0, // not set
+			MaxQueueSize: 0,
 			CurrentAlloc: optconfig.AllocationData{
 				Accelerator: "H100",
 				MaxBatch:    64,
@@ -63,7 +57,6 @@ func TestBuildEnvironments_ZeroMaxQueueSizeWhenUnset(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("expected 1 environment, got %d", len(envs))
 	}
-
 	if envs[0].MaxQueueSize != 0 {
 		t.Errorf("MaxQueueSize = %d, want 0 (no external queue)", envs[0].MaxQueueSize)
 	}

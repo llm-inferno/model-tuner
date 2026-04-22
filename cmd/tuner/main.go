@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	pkgconfig "github.com/llm-inferno/model-tuner/pkg/config"
+	pkgsvc "github.com/llm-inferno/model-tuner/pkg/service"
 	"github.com/llm-inferno/model-tuner/tunerservice"
 )
 
@@ -21,51 +22,51 @@ func main() {
 	}
 
 	warmUpCycles := pkgconfig.DefaultWarmUpCycles
-	if v := os.Getenv(tunerservice.WarmUpCyclesEnvName); v != "" {
+	if v := os.Getenv(pkgsvc.WarmUpCyclesEnvName); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			warmUpCycles = n
 		}
 	}
 
-	initObs := tunerservice.DefaultInitObs
-	if v := os.Getenv(tunerservice.InitObsEnvName); v != "" {
+	initObs := pkgsvc.DefaultInitObs
+	if v := os.Getenv(pkgsvc.InitObsEnvName); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
 			initObs = n
 		}
 	}
 
-	holdBack := tunerservice.DefaultInitHoldBack
-	if v := os.Getenv(tunerservice.InitHoldBackEnvName); v != "" {
+	holdBack := pkgsvc.DefaultInitHoldBack
+	if v := os.Getenv(pkgsvc.InitHoldBackEnvName); v != "" {
 		holdBack = v == "true" || v == "1"
 	}
 
-	useSliding := os.Getenv(tunerservice.EstimatorModeEnvName) == "sliding-window"
+	useSliding := os.Getenv(pkgsvc.EstimatorModeEnvName) == "sliding-window"
 
-	windowSize := tunerservice.DefaultWindowSize
-	if v := os.Getenv(tunerservice.WindowSizeEnvName); v != "" {
+	windowSize := pkgsvc.DefaultWindowSize
+	if v := os.Getenv(pkgsvc.WindowSizeEnvName); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
 			windowSize = n
 		}
 	}
 
-	residualThreshold := tunerservice.DefaultResidualThreshold
-	if v := os.Getenv(tunerservice.ResidualThresholdEnvName); v != "" {
+	residualThreshold := pkgsvc.DefaultResidualThreshold
+	if v := os.Getenv(pkgsvc.ResidualThresholdEnvName); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
 			residualThreshold = f
 		}
 	}
 
-	initFitThreshold := tunerservice.DefaultInitFitThreshold
-	if v := os.Getenv(tunerservice.InitFitThresholdEnvName); v != "" {
+	initFitThreshold := pkgsvc.DefaultInitFitThreshold
+	if v := os.Getenv(pkgsvc.InitFitThresholdEnvName); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 {
 			initFitThreshold = f
 		}
 	}
 
-	service := tunerservice.NewTunerService(warmUpCycles, initObs, holdBack, useSliding, windowSize, residualThreshold, initFitThreshold)
+	service := pkgsvc.NewTunerService(warmUpCycles, initObs, holdBack, useSliding, windowSize, residualThreshold, initFitThreshold)
 	server := tunerservice.NewTunerServer(service)
 
-	estimatorMode := tunerservice.DefaultEstimatorMode
+	estimatorMode := pkgsvc.DefaultEstimatorMode
 	if useSliding {
 		estimatorMode = "sliding-window"
 	}

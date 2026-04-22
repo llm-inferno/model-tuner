@@ -1,4 +1,4 @@
-package tunerservice
+package service
 
 import (
 	"fmt"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/llm-inferno/model-tuner/pkg/config"
 	"github.com/llm-inferno/model-tuner/pkg/core"
+	estimator "github.com/llm-inferno/model-tuner/pkg/estimator"
 	"github.com/llm-inferno/model-tuner/pkg/utils"
 )
 
@@ -18,15 +19,15 @@ import (
 type TunerService struct {
 	paramStore        *ParameterStore
 	warmUpCycles      int
-	estimators        map[string]*InitEstimator
+	estimators        map[string]*estimator.InitEstimator
 	initObs           int
 	holdBack          bool
 	useSliding        bool
 	windowSize        int
 	residualThreshold float64
-	slidingEstimators map[string]*SlidingWindowEstimator
-	initFitThreshold  float64         // 0 = disabled; >0 = EKF fallback when funcValue exceeds this
-	ekfFallbacks      map[string]bool // pairs permanently routed to EKF due to poor init fit
+	slidingEstimators map[string]*estimator.SlidingWindowEstimator
+	initFitThreshold  float64
+	ekfFallbacks      map[string]bool
 }
 
 // NewTunerService creates a TunerService with an empty ParameterStore.
@@ -34,43 +35,40 @@ func NewTunerService(warmUpCycles, initObs int, holdBack bool, useSliding bool, 
 	return &TunerService{
 		paramStore:        NewParameterStore(),
 		warmUpCycles:      warmUpCycles,
-		estimators:        make(map[string]*InitEstimator),
+		estimators:        make(map[string]*estimator.InitEstimator),
 		initObs:           initObs,
 		holdBack:          holdBack,
 		useSliding:        useSliding,
 		windowSize:        windowSize,
 		residualThreshold: residualThreshold,
-		slidingEstimators: make(map[string]*SlidingWindowEstimator),
+		slidingEstimators: make(map[string]*estimator.SlidingWindowEstimator),
 		initFitThreshold:  initFitThreshold,
 		ekfFallbacks:      make(map[string]bool),
 	}
 }
 
-// estimatorFor returns the InitEstimator for the given key, creating it if needed.
-func (ts *TunerService) estimatorFor(key string) *InitEstimator {
+func (ts *TunerService) estimatorFor(key string) *estimator.InitEstimator {
 	if ie, ok := ts.estimators[key]; ok {
 		return ie
 	}
-	ie := NewInitEstimator(ts.initObs, ts.holdBack)
+	ie := estimator.NewInitEstimator(ts.initObs, ts.holdBack)
 	ts.estimators[key] = ie
 	return ie
 }
 
-// slidingEstimatorFor returns the SlidingWindowEstimator for the given key, creating and
-// seeding it from ie.observations if it does not yet exist.
-func (ts *TunerService) slidingEstimatorFor(key string, ie *InitEstimator) *SlidingWindowEstimator {
+func (ts *TunerService) slidingEstimatorFor(key string, ie *estimator.InitEstimator) *estimator.SlidingWindowEstimator {
 	if swe, ok := ts.slidingEstimators[key]; ok {
 		return swe
 	}
-	swe := NewSlidingWindowEstimator(ts.windowSize, ts.initObs, ts.residualThreshold)
-	swe.Seed(ie.observations)
+	swe := estimator.NewSlidingWindowEstimator(ts.windowSize, ts.initObs, ts.residualThreshold)
+	swe.SeedFromEstimator(ie)
 	if fitted, err := ie.Fit(); err == nil {
 		fv := ie.LastFitFuncValue()
 		if ts.initFitThreshold > 0 && fv > ts.initFitThreshold {
 			slog.Warn("poor init fit: falling back to EKF for this pair",
 				"key", key, "funcValue", fv, "threshold", ts.initFitThreshold)
 			ts.ekfFallbacks[key] = true
-			return swe // not stored; ekfFallbacks prevents future SWNM routing
+			return swe
 		}
 		swe.SeedLastFit(fitted)
 	} else if ts.initFitThreshold > 0 {
@@ -82,10 +80,7 @@ func (ts *TunerService) slidingEstimatorFor(key string, ie *InitEstimator) *Slid
 	return swe
 }
 
-// tuneGroupSliding performs parameter estimation for one (model, accelerator) group using
-// the SlidingWindowEstimator. Called by tuneGroup when useSliding is true and the
-// InitEstimator has completed its collection phase.
-func (ts *TunerService) tuneGroupSliding(model, accelerator, key string, ie *InitEstimator, env *core.EnvironmentPrefillDecode) error {
+func (ts *TunerService) tuneGroupSliding(model, accelerator, key string, ie *estimator.InitEstimator, env *core.EnvironmentPrefillDecode) error {
 	_, alreadyExists := ts.slidingEstimators[key]
 	swe := ts.slidingEstimatorFor(key, ie)
 
@@ -95,17 +90,15 @@ func (ts *TunerService) tuneGroupSliding(model, accelerator, key string, ie *Ini
 	}
 
 	if alreadyExists {
-		// SWE already existed: add the current observation (it was not part of the seed).
 		swe.AddObservation(env)
 	}
-	// If SWE was just created: ie.observations (which includes env) was used as the seed.
 
 	if !swe.IsReady() {
 		slog.Info("sliding window filling",
 			"model", model, "accelerator", accelerator,
-			"count", len(swe.window), "windowSize", swe.windowSize)
+			"count", swe.Len(), "windowSize", ts.windowSize)
 		return fmt.Errorf("sliding window filling for %s/%s (%d/%d)",
-			model, accelerator, len(swe.window), swe.windowSize)
+			model, accelerator, swe.Len(), ts.windowSize)
 	}
 
 	fitted, err := swe.Fit()
@@ -132,9 +125,8 @@ func (ts *TunerService) tuneGroupSliding(model, accelerator, key string, ie *Ini
 	return nil
 }
 
-// Tune accepts per-replica ServerSpecs from the control-loop Collector, runs EKF tuning for each
+// Tune accepts per-replica ServerSpecs, runs EKF or SWNM tuning for each
 // (model, accelerator) group, and returns updated ModelData with tuned alpha/beta/gamma.
-// Returns an error if no parameters could be produced (all replicas idle or all groups failed).
 func (ts *TunerService) Tune(replicaSpecs []optconfig.ServerSpec) (*optconfig.ModelData, error) {
 	groups := groupByModelAccelerator(replicaSpecs)
 	if len(groups) == 0 {
@@ -155,7 +147,6 @@ func (ts *TunerService) Tune(replicaSpecs []optconfig.ServerSpec) (*optconfig.Mo
 	return modelData, nil
 }
 
-// tuneGroup runs EKF tuning for all replicas in a single (model, accelerator) group.
 func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfig.ServerSpec) error {
 	envs := buildEnvironments(replicas)
 	if len(envs) == 0 {
@@ -177,30 +168,25 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 	}
 
 	key := makeKey(model, accelerator)
-	estimator := ts.estimatorFor(key)
-	// Use only envs[0] to collect one observation per cycle; additional replica envs
-	// within the same cycle are correlated (same load instant) and add little diversity.
-	estimator.AddObservation(envs[0])
+	ie := ts.estimatorFor(key)
+	ie.AddObservation(envs[0])
 
-	if !estimator.IsReady() {
+	if !ie.IsReady() {
 		slog.Info("collecting initial observations",
 			"model", model, "accelerator", accelerator,
-			"count", estimator.ObsCount(), "minObs", estimator.MinObs())
+			"count", ie.ObsCount(), "minObs", ie.MinObs())
 		return fmt.Errorf("collecting initial observations for %s/%s (%d/%d)",
-			model, accelerator, estimator.ObsCount(), estimator.MinObs())
+			model, accelerator, ie.ObsCount(), ie.MinObs())
 	}
 
-	// SWNM path: bypass the EKF and use the sliding-window estimator instead.
 	if ts.useSliding && !ts.ekfFallbacks[key] {
-		return ts.tuneGroupSliding(model, accelerator, key, estimator, envs[0])
+		return ts.tuneGroupSliding(model, accelerator, key, ie, envs[0])
 	}
 
-	// Fit once: run Nelder-Mead on the first cycle after collection completes.
-	// FitDone() prevents re-running if EKF updates are persistently rejected.
 	var fitInitState []float64
-	if ts.paramStore.Get(model, accelerator) == nil && !estimator.FitDone() {
+	if ts.paramStore.Get(model, accelerator) == nil && !ie.FitDone() {
 		var fitErr error
-		fitInitState, fitErr = estimator.Fit()
+		fitInitState, fitErr = ie.Fit()
 		if fitErr != nil {
 			slog.Warn("InitEstimator Fit failed, EKF will use guessInitState", "err", fitErr)
 		}
@@ -261,21 +247,15 @@ func (ts *TunerService) tuneGroup(model, accelerator string, replicas []optconfi
 	return nil
 }
 
-// createTuner creates a Tuner for the given model/accelerator, restoring state from the
-// ParameterStore if available, or guessing initial state from the first environment.
 func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.EnvironmentPrefillDecode, fitInitState []float64) (*core.Tuner, error) {
 	existing := ts.paramStore.Get(model, accelerator)
 
-	var configData *config.ConfigData
-	var err error
-
-	configData, err = utils.LoadConfigForServer(config.DefaultConfigType)
+	configData, err := utils.LoadConfigForServer(config.DefaultConfigType)
 	if err != nil {
 		return nil, fmt.Errorf("load config for %s: %w", model, err)
 	}
 
 	if existing != nil {
-		// Restore previous alpha/beta/gamma as initial state
 		setInitState(&configData.ModelData, []float64{
 			float64(existing.Alpha),
 			float64(existing.Beta),
@@ -292,10 +272,9 @@ func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.En
 			return tuner, nil
 		}
 	} else {
-		// Use fitted initial state if available, otherwise guess from the first observation.
 		if fitInitState != nil {
 			setInitState(&configData.ModelData, fitInitState)
-		} else if initState := guessInitState(firstEnv); initState != nil {
+		} else if initState := estimator.GuessInitState(firstEnv); initState != nil {
 			setInitState(&configData.ModelData, initState)
 		}
 	}
@@ -310,9 +289,6 @@ func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.En
 	return tuner, nil
 }
 
-// setInitState sets InitState and recomputes MinState/MaxState using a log-symmetric factor:
-// Min = max(init[i]/factor, epsilon), Max = init[i]*factor.
-// This keeps the three fields consistent whenever the initial state changes.
 func setInitState(md *config.ModelData, initState []float64) {
 	md.InitState = initState
 	md.MinState = make([]float64, len(initState))
@@ -323,8 +299,6 @@ func setInitState(md *config.ModelData, initState []float64) {
 	}
 }
 
-// buildModelData constructs ModelData from the ParameterStore for all observed model/accelerator groups.
-// It uses replica data to fill in MaxBatchSize.
 func (ts *TunerService) buildModelData(groups map[string][]optconfig.ServerSpec) *optconfig.ModelData {
 	var entries []optconfig.ModelAcceleratorPerfData
 	for key, replicas := range groups {
@@ -354,9 +328,7 @@ func (ts *TunerService) GetParams(model, accelerator string) *LearnedParameters 
 	return ts.paramStore.Get(model, accelerator)
 }
 
-// IsWarmingUp returns true if the tuner has not yet completed warmUpCycles accepted EKF
-// updates for at least one known (model, accelerator) pair.
-// Returns false when warmUpCycles is zero or when all pairs have graduated.
+// IsWarmingUp returns true if any known pair has not yet completed its init or warm-up phase.
 func (ts *TunerService) IsWarmingUp() bool {
 	for _, ie := range ts.estimators {
 		if !ie.IsReady() && ie.HoldBack() {
@@ -369,14 +341,13 @@ func (ts *TunerService) IsWarmingUp() bool {
 				continue
 			}
 			if ts.ekfFallbacks[key] {
-				continue // handled by the EKF warm-up check below
+				continue
 			}
 			swe, ok := ts.slidingEstimators[key]
 			if !ok || !swe.IsReady() {
 				return true
 			}
 		}
-		// EKF-fallback pairs need warm-up cycles just like regular EKF pairs.
 		if ts.warmUpCycles > 0 {
 			for _, params := range ts.paramStore.GetAll() {
 				if params.UpdateCount < ts.warmUpCycles {
@@ -398,8 +369,7 @@ func (ts *TunerService) IsWarmingUp() bool {
 }
 
 // Merge accepts the Controller's current ModelData and returns it with PerfParms overlaid
-// from the ParameterStore for any matching (name, accelerator) pairs. Entries in the
-// ParameterStore that have no match in the input are appended with default non-parameter fields.
+// from the ParameterStore for any matching (name, accelerator) pairs.
 func (ts *TunerService) Merge(modelData *optconfig.ModelData) *optconfig.ModelData {
 	if modelData == nil {
 		modelData = &optconfig.ModelData{}
@@ -408,7 +378,6 @@ func (ts *TunerService) Merge(modelData *optconfig.ModelData) *optconfig.ModelDa
 	allParams := ts.paramStore.GetAll()
 	matched := make(map[string]bool, len(allParams))
 
-	// Phase 1: overlay tuned PerfParms onto existing entries.
 	result := make([]optconfig.ModelAcceleratorPerfData, len(modelData.PerfData))
 	for i, entry := range modelData.PerfData {
 		result[i] = entry
@@ -427,7 +396,6 @@ func (ts *TunerService) Merge(modelData *optconfig.ModelData) *optconfig.ModelDa
 		}
 	}
 
-	// Phase 2: append ParameterStore entries not present in the input.
 	for key, params := range allParams {
 		if matched[key] {
 			continue

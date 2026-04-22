@@ -1,4 +1,4 @@
-package tunerservice
+package estimator
 
 import (
 	"fmt"
@@ -16,14 +16,13 @@ import (
 type SlidingWindowEstimator struct {
 	window            []fitObservation
 	windowSize        int
-	minObs            int     // minimum observations before IsReady(); <= windowSize
+	minObs            int
 	residualThreshold float64
-	lastFit           []float64 // warm-start x0 from previous Fit result
+	lastFit           []float64
 }
 
 // NewSlidingWindowEstimator creates a SlidingWindowEstimator with the given window capacity,
 // minimum observations before IsReady(), and residual outlier rejection threshold.
-// minObs must be >= 1; if 0 it defaults to 1. windowSize controls eviction capacity.
 func NewSlidingWindowEstimator(windowSize, minObs int, residualThreshold float64) *SlidingWindowEstimator {
 	if windowSize < 1 {
 		windowSize = 1
@@ -42,15 +41,14 @@ func NewSlidingWindowEstimator(windowSize, minObs int, residualThreshold float64
 }
 
 // SeedLastFit sets the warm-start x0 for the first Fit() call, e.g. from InitEstimator.Fit().
-// Without this, the first Fit() falls back to guessInitState which can yield a degenerate result.
 func (swe *SlidingWindowEstimator) SeedLastFit(x []float64) {
 	if len(x) > 0 {
 		swe.lastFit = x
 	}
 }
 
-// Seed pre-fills the window with observations from the InitEstimator collection phase.
-// Oldest entries are evicted when the seed exceeds windowSize.
+// Seed pre-fills the window with raw observations. Oldest entries are evicted when the
+// seed exceeds windowSize.
 func (swe *SlidingWindowEstimator) Seed(obs []fitObservation) {
 	for _, o := range obs {
 		swe.window = append(swe.window, o)
@@ -60,9 +58,15 @@ func (swe *SlidingWindowEstimator) Seed(obs []fitObservation) {
 	}
 }
 
+// SeedFromEstimator pre-fills the window from an InitEstimator's collected observations.
+// Callers outside pkg/estimator use this instead of Seed to avoid accessing the unexported
+// fitObservation type directly.
+func (swe *SlidingWindowEstimator) SeedFromEstimator(ie *InitEstimator) {
+	swe.Seed(ie.observations)
+}
+
 // AddObservation appends a new operating-point observation.
 // Oldest entry is evicted when the window is at capacity.
-// Nil and invalid environments are silently ignored.
 func (swe *SlidingWindowEstimator) AddObservation(env *core.EnvironmentPrefillDecode) {
 	if env == nil || !env.Valid() {
 		return
@@ -87,9 +91,13 @@ func (swe *SlidingWindowEstimator) IsReady() bool {
 	return len(swe.window) >= swe.minObs
 }
 
+// Len returns the number of observations currently in the window.
+func (swe *SlidingWindowEstimator) Len() int {
+	return len(swe.window)
+}
+
 // Fit runs Nelder-Mead on the current window, performs one residual-based outlier
 // rejection pass, and refits if any observations were dropped.
-// Returns [alpha, beta, gamma] or an error if fitting fails.
 func (swe *SlidingWindowEstimator) Fit() ([]float64, error) {
 	if len(swe.window) == 0 {
 		return nil, fmt.Errorf("no observations in window")
@@ -97,7 +105,7 @@ func (swe *SlidingWindowEstimator) Fit() ([]float64, error) {
 
 	x0 := swe.lastFit
 	if x0 == nil {
-		x0 = guessInitState(swe.window[len(swe.window)-1].toEnv())
+		x0 = GuessInitState(swe.window[len(swe.window)-1].toEnv())
 	}
 	if x0 == nil {
 		x0 = []float64{5.0, 0.05, 0.0005}
@@ -123,9 +131,7 @@ func (swe *SlidingWindowEstimator) Fit() ([]float64, error) {
 }
 
 // filterOutliers removes the single observation with the largest residual if that residual
-// exceeds swe.residualThreshold. Removing one at a time avoids discarding good observations
-// that appear anomalous only because the initial fit was corrupted by the outlier.
-// If threshold is zero (or no observation exceeds it), obs is returned unchanged.
+// exceeds swe.residualThreshold.
 func (swe *SlidingWindowEstimator) filterOutliers(obs []fitObservation, x []float64) []fitObservation {
 	if swe.residualThreshold <= 0 {
 		return obs
@@ -149,7 +155,6 @@ func (swe *SlidingWindowEstimator) filterOutliers(obs []fitObservation, x []floa
 }
 
 // residual returns sqrt(dTTFT² + dITL²) for one observation evaluated at params x=[α,β,γ].
-// Returns math.MaxFloat64 if the model evaluation fails.
 func (swe *SlidingWindowEstimator) residual(obs fitObservation, x []float64) float64 {
 	if x[0] <= 0 || x[1] <= 0 || x[2] <= 0 {
 		return math.MaxFloat64
@@ -186,7 +191,6 @@ func (swe *SlidingWindowEstimator) residual(obs fitObservation, x []float64) flo
 }
 
 // fitWithX0 runs Nelder-Mead on obs starting from x0.
-// Variables are scaled by x0 so the optimizer sees O(1) quantities in all dimensions.
 func (swe *SlidingWindowEstimator) fitWithX0(x0 []float64, obs []fitObservation) ([]float64, error) {
 	if len(obs) == 0 {
 		return nil, fmt.Errorf("no observations to fit")
@@ -208,23 +212,21 @@ func (swe *SlidingWindowEstimator) fitWithX0(x0 []float64, obs []fitObservation)
 	}
 
 	problem := optimize.Problem{Func: scaledObjective}
-	// 500 evaluations matches InitEstimator; adequate for a 3-parameter problem.
-	// Per-call cost scales linearly with len(obs), so larger windows see less budget per point.
 	settings := &optimize.Settings{FuncEvaluations: 500}
 	result, err := optimize.Minimize(problem, scaledX0, settings, &optimize.NelderMead{})
 	if err != nil {
-		slog.Warn("SlidingWindowEstimator: Nelder-Mead pre-flight error, using guessInitState fallback", "err", err)
-		if fallback := guessInitState(obs[len(obs)-1].toEnv()); fallback != nil {
+		slog.Warn("SlidingWindowEstimator: Nelder-Mead pre-flight error, using GuessInitState fallback", "err", err)
+		if fallback := GuessInitState(obs[len(obs)-1].toEnv()); fallback != nil {
 			return fallback, nil
 		}
-		return nil, fmt.Errorf("Nelder-Mead failed and guessInitState returned nil: %w", err)
+		return nil, fmt.Errorf("Nelder-Mead failed and GuessInitState returned nil: %w", err)
 	}
 
 	switch result.Status {
 	case optimize.Success, optimize.FunctionConvergence, optimize.FunctionEvaluationLimit:
 	default:
 		slog.Warn("SlidingWindowEstimator: unexpected Nelder-Mead termination", "status", result.Status)
-		if fallback := guessInitState(obs[len(obs)-1].toEnv()); fallback != nil {
+		if fallback := GuessInitState(obs[len(obs)-1].toEnv()); fallback != nil {
 			return fallback, nil
 		}
 		return nil, fmt.Errorf("Nelder-Mead unexpected status %v", result.Status)
@@ -236,9 +238,9 @@ func (swe *SlidingWindowEstimator) fitWithX0(x0 []float64, obs []fitObservation)
 	}
 	x := unscaled
 	if x[0] <= 0 || x[1] <= 0 || x[2] <= 0 {
-		slog.Warn("SlidingWindowEstimator: non-positive params, using guessInitState fallback",
+		slog.Warn("SlidingWindowEstimator: non-positive params, using GuessInitState fallback",
 			"alpha", x[0], "beta", x[1], "gamma", x[2])
-		if fallback := guessInitState(obs[len(obs)-1].toEnv()); fallback != nil {
+		if fallback := GuessInitState(obs[len(obs)-1].toEnv()); fallback != nil {
 			return fallback, nil
 		}
 		return nil, fmt.Errorf("Nelder-Mead returned non-positive params")

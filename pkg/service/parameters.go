@@ -1,21 +1,22 @@
-package tunerservice
+package service
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"gonum.org/v1/gonum/mat"
 )
 
-// LearnedParameters holds the EKF-tuned parameters for one model/accelerator pair.
+// LearnedParameters holds the tuned parameters for one model/accelerator pair.
 type LearnedParameters struct {
 	Alpha       float32
 	Beta        float32
 	Gamma       float32
 	NIS         float64
-	UpdateCount int         // number of accepted EKF updates; used to track warm-up progress
-	Covariance  [][]float64 // nStates x nStates covariance matrix
+	UpdateCount int
+	Covariance  [][]float64
 	LastUpdated time.Time
 }
 
@@ -45,6 +46,16 @@ func NewParameterStore() *ParameterStore {
 
 func makeKey(model, accelerator string) string {
 	return fmt.Sprintf("%s/%s", model, accelerator)
+}
+
+// splitKey splits a "model/accelerator" key back into its components.
+// If the model name itself contains slashes, only the last slash is used.
+func splitKey(key string) (model, accelerator string) {
+	idx := strings.LastIndex(key, "/")
+	if idx < 0 {
+		return key, ""
+	}
+	return key[:idx], key[idx+1:]
 }
 
 // Get returns the stored parameters for a model/accelerator pair, or nil if not found.
