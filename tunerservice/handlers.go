@@ -67,7 +67,8 @@ func (ts *TunerServer) handleWarmUp(c *gin.Context) {
 // POST /merge
 // Request body: config.ModelData (the Controller's current ModelData)
 // Response:     config.ModelData with PerfParms overlaid from the ParameterStore;
-//               ParameterStore entries absent from the input are appended with defaults.
+//
+//	ParameterStore entries absent from the input are appended with defaults.
 func (ts *TunerServer) handleMerge(c *gin.Context) {
 	var modelData optconfig.ModelData
 	if err := c.ShouldBindJSON(&modelData); err != nil {

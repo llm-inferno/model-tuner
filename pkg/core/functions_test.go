@@ -22,7 +22,7 @@ func TestSystemFunc_UsesEnvMaxQueueSize(t *testing.T) {
 		beta         = float32(0.016)
 		gamma        = float32(0.0005)
 		maxBatchSize = 64
-		maxQueueSize = 128 // explicit — NOT 0 (no external queue)
+		maxQueueSize = 128          // explicit — NOT 0 (no external queue)
 		lambda       = float32(200) // high load: queue depth is meaningful
 		inTok        = float32(2048)
 		outTok       = float32(1024)

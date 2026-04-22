@@ -27,12 +27,12 @@ func aggressiveConfig() *config.ConfigData {
 
 func newTestEnv(ttft, itl float32) *EnvironmentPrefillDecode {
 	return NewEnvironmentPrefillDecode(
-		30,   // lambda RPM
-		0,    // batchSize
-		0,    // avgQueueTime
-		128,  // maxBatchSize
-		512,  // avgInputTokens
-		128,  // avgOutputTokens
+		30,  // lambda RPM
+		0,   // batchSize
+		0,   // avgQueueTime
+		128, // maxBatchSize
+		512, // avgInputTokens
+		128, // avgOutputTokens
 		ttft,
 		itl,
 	)

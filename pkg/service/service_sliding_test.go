@@ -5,8 +5,8 @@ import (
 
 	optconfig "github.com/llm-inferno/optimizer-light/pkg/config"
 
-	estimator "github.com/llm-inferno/model-tuner/pkg/estimator"
 	"github.com/llm-inferno/model-tuner/pkg/core"
+	estimator "github.com/llm-inferno/model-tuner/pkg/estimator"
 )
 
 func makeTestEnv(lambda, ttft, itl float32, inTok, outTok float32, maxBatch int) *core.EnvironmentPrefillDecode {
