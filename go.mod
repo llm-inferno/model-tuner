@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/llm-inferno/kalman-filter v0.1.2
 	github.com/llm-inferno/optimizer-light v0.7.5
-	github.com/llm-inferno/queue-analysis v0.4.0
+	github.com/llm-inferno/queue-analysis v0.5.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.67.2
 	gonum.org/v1/gonum v0.16.0
