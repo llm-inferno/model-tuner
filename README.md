@@ -87,13 +87,13 @@ CONFIG_DATA_DIR=/path/to/configs go run ./demos/tunerservice
 **Build the image:**
 
 ```bash
-docker build -t inferno-model-tuner:latest .
+docker build -t quay.io/atantawi/inferno-tuner:latest .
 ```
 
 **Run the container:**
 
 ```bash
-docker run --rm -p 8081:8081 inferno-model-tuner:latest
+docker run --rm -p 8081:8081 quay.io/atantawi/inferno-tuner:latest
 ```
 
 The server binds to `0.0.0.0:8081` inside the container and is reachable at `http://localhost:8081` on the host.
@@ -104,7 +104,7 @@ The server binds to `0.0.0.0:8081` inside the container and is reachable at `htt
 docker run --rm -p 8081:8081 \
   -v /path/to/your/configs:/etc/tuner/config \
   -e CONFIG_DATA_DIR=/etc/tuner/config \
-  inferno-model-tuner:latest
+  quay.io/atantawi/inferno-tuner:latest
 ```
 
 ### Kubernetes
@@ -119,7 +119,7 @@ kubectl apply -f deploy/
 
 This creates:
 - `model-tuner-config` — ConfigMap with default EKF configuration
-- `model-tuner` — Deployment (1 replica, image `quay.io/atantawi/inferno-model-tuner:latest`)
+- `model-tuner` — Deployment (1 replica, image `quay.io/atantawi/inferno-tuner:latest`)
 - `model-tuner` — ClusterIP Service reachable at `http://model-tuner:8081` within the cluster
 
 **Override config** by replacing the ConfigMap data or mounting a custom ConfigMap and setting `CONFIG_DATA_DIR` in the Deployment's env.
