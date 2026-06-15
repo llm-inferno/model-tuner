@@ -227,7 +227,7 @@ GET /getparams?model=llama3-8b&accelerator=A100
 POST /merge
 Content-Type: application/json
 
-{ "models": [ { "name", "acc", "accCount", "maxBatchSize", "atTokens", "perfParms": { "alpha", "beta", "gamma" } }, ... ] }
+{ "models": [ { "name", "acc", "accCount", "maxBatchSize", "perfParms": { "alpha", "beta", "gamma" } }, ... ] }
 
 200 OK
 { "models": [ ... merged entries ... ] }
@@ -237,8 +237,8 @@ Content-Type: application/json
 
 Merges the Controller's current `ModelData` with tuned parameters from the `ParameterStore`:
 
-- For each entry in the input: if the ParameterStore has tuned params for that `(name, acc)` pair, its `PerfParms` (alpha/beta/gamma) are replaced. All other fields (`accCount`, `maxBatchSize`, `atTokens`) are preserved unchanged.
-- ParameterStore entries not present in the input are appended as new entries with tuned `PerfParms` and defaults: `accCount=1`, `maxBatchSize=256`, `atTokens=1024`.
+- For each entry in the input: if the ParameterStore has tuned params for that `(name, acc)` pair, its `PerfParms` (alpha/beta/gamma) are replaced. All other fields (`accCount`, `maxBatchSize`) are preserved unchanged.
+- ParameterStore entries not present in the input are appended as new entries with tuned `PerfParms` and defaults: `accCount=1`, `maxBatchSize=256`.
 - An empty `models` array is valid input; the response will contain only the extra ParameterStore entries.
 
 ---
@@ -264,4 +264,4 @@ printing the returned `ModelData` and then querying `/getparams`.
 | `github.com/gin-gonic/gin` | HTTP server |
 | `gonum.org/v1/gonum/mat` | Matrix operations for NIS, covariance, state vectors |
 
-`optimizer-light` resolves to the tagged `v0.7.0` release from the public registry.
+`optimizer-light` resolves to the tagged `v0.8.0` release from the public registry.
