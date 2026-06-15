@@ -406,7 +406,6 @@ func (ts *TunerService) Merge(modelData *optconfig.ModelData) *optconfig.ModelDa
 			Acc:          acc,
 			AccCount:     DefaultAccCount,
 			MaxBatchSize: DefaultMaxBatchSize,
-			AtTokens:     DefaultAtTokens,
 			PerfParms: optconfig.PerfParms{
 				Alpha: params.Alpha,
 				Beta:  params.Beta,

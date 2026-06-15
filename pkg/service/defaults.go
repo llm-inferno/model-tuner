@@ -36,5 +36,4 @@ const (
 const (
 	DefaultAccCount     = 1
 	DefaultMaxBatchSize = 256
-	DefaultAtTokens     = 1024
 )

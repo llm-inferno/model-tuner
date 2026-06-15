@@ -46,7 +46,7 @@ Accepts per-replica `ServerSpec` metrics from the control-loop Collector, runs E
 
 ### `POST /merge`
 
-Accepts the Controller's current `ModelData` and returns it with `PerfParms` (alpha/beta/gamma) overlaid from the `ParameterStore` for matching `(model, accelerator)` pairs. `ParameterStore` entries not present in the input are appended with tuned `PerfParms` and default non-parameter fields (`accCount=1`, `maxBatchSize=256`, `atTokens=1024`). An empty `models` array is valid input.
+Accepts the Controller's current `ModelData` and returns it with `PerfParms` (alpha/beta/gamma) overlaid from the `ParameterStore` for matching `(model, accelerator)` pairs. `ParameterStore` entries not present in the input are appended with tuned `PerfParms` and default non-parameter fields (`accCount=1`, `maxBatchSize=256`). An empty `models` array is valid input.
 
 **Request body:** `config.ModelData`
 
