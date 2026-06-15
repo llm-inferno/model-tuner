@@ -264,4 +264,4 @@ printing the returned `ModelData` and then querying `/getparams`.
 | `github.com/gin-gonic/gin` | HTTP server |
 | `gonum.org/v1/gonum/mat` | Matrix operations for NIS, covariance, state vectors |
 
-`optimizer-light` resolves to the tagged `v0.7.0` release from the public registry.
+`optimizer-light` resolves to the tagged `v0.8.0` release from the public registry.
