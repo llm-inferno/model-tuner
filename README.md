@@ -58,6 +58,8 @@ The `tunerservice` package is a passive HTTP server designed for integration wit
 
 **Initial parameter estimation** — before steady-state begins for a new `(model, accelerator)` pair, the service accumulates `TUNER_INIT_OBS` (default 5) observations across control cycles, then runs a Nelder-Mead fit to find initial (α, β, γ) that jointly explain all observations. During collection, `GET /warmup` returns `true` (configurable via `TUNER_INIT_HOLD_BACK`) so the controller can defer optimization until parameters are ready.
 
+**Identifiability guard** (`TUNER_MAX_CONDITION_NUMBER`, default 1000; 0 disables) — when the observation window lacks operating-point spread (e.g. a single-replica deployment whose observations all sit at one token point), the fit is unidentifiable and Nelder-Mead can converge to a degenerate solution that collapses β/γ toward zero and inflates α. Such a fit is positive and low-residual, so it slips past the outlier/non-positive checks. After each fit the service computes the condition number of the residual Jacobian (taken w.r.t. the log of each parameter, so it is scale-invariant); a flat parameter direction the data cannot pin down yields a very large condition number. Above the threshold the sliding-window estimator holds its last good fit (or falls back to `GuessInitState`), and the init estimator falls back to `GuessInitState` rather than graduating warm-up on the degenerate fit. Healthy fits sit well below ~100; degenerate fits exceed a few thousand.
+
 See [`tunerservice/README.md`](tunerservice/README.md) for full API docs, EKF features, warm-up phases, and configuration.
 
 ## Running the Tuner Service
