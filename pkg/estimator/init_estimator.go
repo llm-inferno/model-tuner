@@ -76,7 +76,10 @@ func (ie *InitEstimator) MinObs() int { return ie.minObs }
 func (ie *InitEstimator) FitDone() bool { return ie.fitDone }
 
 // LastFitFuncValue returns the Nelder-Mead objective value from the most recent Fit() call.
-// Returns 0 if Fit() has not been called yet, math.MaxFloat64 if the fit fell back to GuessInitState.
+// Returns 0 if Fit() has not been called yet; math.MaxFloat64 if the fit failed (Nelder-Mead
+// error, unexpected status, or non-positive params) and fell back to GuessInitState; and 0 if
+// the fit was rejected as ill-conditioned and fell back to GuessInitState (a benign value that
+// deliberately keeps the pair on the guarded sliding-window path rather than escalating to EKF).
 func (ie *InitEstimator) LastFitFuncValue() float64 { return ie.lastFitFuncValue }
 
 // Fit runs Nelder-Mead minimisation over all accumulated observations to find the

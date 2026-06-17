@@ -67,6 +67,11 @@ func main() {
 	if v := os.Getenv(pkgsvc.MaxConditionNumberEnvName); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 {
 			maxConditionNumber = f
+		} else {
+			// Reject negatives/garbage explicitly: 0 disables the guard, so a stray
+			// negative would otherwise silently keep the default and read as "disabled".
+			slog.Warn("ignoring invalid value, using default",
+				"env", pkgsvc.MaxConditionNumberEnvName, "value", v, "default", maxConditionNumber)
 		}
 	}
 
