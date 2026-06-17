@@ -17,17 +17,25 @@ import (
 // TunerService groups replica metrics by (model, accelerator), runs EKF tuning per group,
 // maintains a ParameterStore for state continuity, and returns updated ModelData.
 type TunerService struct {
-	paramStore        *ParameterStore
-	warmUpCycles      int
-	estimators        map[string]*estimator.InitEstimator
-	initObs           int
-	holdBack          bool
-	useSliding        bool
-	windowSize        int
-	residualThreshold float64
-	slidingEstimators map[string]*estimator.SlidingWindowEstimator
-	initFitThreshold  float64
-	ekfFallbacks      map[string]bool
+	paramStore         *ParameterStore
+	warmUpCycles       int
+	estimators         map[string]*estimator.InitEstimator
+	initObs            int
+	holdBack           bool
+	useSliding         bool
+	windowSize         int
+	residualThreshold  float64
+	slidingEstimators  map[string]*estimator.SlidingWindowEstimator
+	initFitThreshold   float64
+	maxConditionNumber float64
+	ekfFallbacks       map[string]bool
+}
+
+// SetMaxConditionNumber sets the identifiability guard threshold applied to every estimator
+// created thereafter (> 0 enables; <= 0 disables). Wire this from configuration before the
+// service handles any tune requests.
+func (ts *TunerService) SetMaxConditionNumber(k float64) {
+	ts.maxConditionNumber = k
 }
 
 // NewTunerService creates a TunerService with an empty ParameterStore.
@@ -52,6 +60,7 @@ func (ts *TunerService) estimatorFor(key string) *estimator.InitEstimator {
 		return ie
 	}
 	ie := estimator.NewInitEstimator(ts.initObs, ts.holdBack)
+	ie.SetMaxConditionNumber(ts.maxConditionNumber)
 	ts.estimators[key] = ie
 	return ie
 }
@@ -61,6 +70,7 @@ func (ts *TunerService) slidingEstimatorFor(key string, ie *estimator.InitEstima
 		return swe
 	}
 	swe := estimator.NewSlidingWindowEstimator(ts.windowSize, ts.initObs, ts.residualThreshold)
+	swe.SetMaxConditionNumber(ts.maxConditionNumber)
 	swe.SeedFromEstimator(ie)
 	if fitted, err := ie.Fit(); err == nil {
 		fv := ie.LastFitFuncValue()

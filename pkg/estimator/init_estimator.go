@@ -13,11 +13,20 @@ import (
 
 // InitEstimator accumulates observations before the EKF starts and fits initial parameters.
 type InitEstimator struct {
-	observations     []fitObservation
-	minObs           int
-	holdBack         bool
-	fitDone          bool
-	lastFitFuncValue float64
+	observations       []fitObservation
+	minObs             int
+	holdBack           bool
+	fitDone            bool
+	lastFitFuncValue   float64
+	maxConditionNumber float64
+}
+
+// SetMaxConditionNumber sets the identifiability guard threshold. When > 0, Fit rejects a
+// degenerate, unidentifiable initial fit (Jacobian condition number above this value) and
+// falls back to the analytical GuessInitState rather than graduating warm-up on it.
+// <= 0 disables the guard.
+func (ie *InitEstimator) SetMaxConditionNumber(k float64) {
+	ie.maxConditionNumber = k
 }
 
 // NewInitEstimator creates an InitEstimator with the given minimum observation count and hold-back flag.
@@ -67,7 +76,10 @@ func (ie *InitEstimator) MinObs() int { return ie.minObs }
 func (ie *InitEstimator) FitDone() bool { return ie.fitDone }
 
 // LastFitFuncValue returns the Nelder-Mead objective value from the most recent Fit() call.
-// Returns 0 if Fit() has not been called yet, math.MaxFloat64 if the fit fell back to GuessInitState.
+// Returns 0 if Fit() has not been called yet; math.MaxFloat64 if the fit failed (Nelder-Mead
+// error, unexpected status, or non-positive params) and fell back to GuessInitState; and 0 if
+// the fit was rejected as ill-conditioned and fell back to GuessInitState (a benign value that
+// deliberately keeps the pair on the guarded sliding-window path rather than escalating to EKF).
 func (ie *InitEstimator) LastFitFuncValue() float64 { return ie.lastFitFuncValue }
 
 // Fit runs Nelder-Mead minimisation over all accumulated observations to find the
@@ -146,6 +158,29 @@ func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
 			return fallback, nil
 		}
 		return nil, fmt.Errorf("Nelder-Mead returned non-positive params and GuessInitState returned nil")
+	}
+
+	// Identifiability guard: do not graduate warm-up on a degenerate, unidentifiable fit
+	// (flat parameter direction, e.g. collapsed beta/gamma from observations lacking
+	// operating-point spread). Fall back to the analytical single-observation guess.
+	if ie.maxConditionNumber > 0 {
+		if kappa := fitConditionNumber(ie.observations, x); kappa > ie.maxConditionNumber {
+			if fallback := GuessInitState(ie.observations[0].toEnv()); fallback != nil {
+				// The analytical guess is a deliberate, usable result for an
+				// unidentifiable window — report a benign funcValue so the service keeps
+				// this pair on the guarded sliding-window path rather than escalating it
+				// to the unguarded EKF (which cannot do better on the same flat data and
+				// would re-introduce the degenerate fit).
+				ie.lastFitFuncValue = 0
+				slog.Warn("InitEstimator: ill-conditioned fit, using GuessInitState fallback",
+					"kappa", kappa, "max", ie.maxConditionNumber,
+					"alpha", x[0], "beta", x[1], "gamma", x[2])
+				return fallback, nil
+			}
+			ie.lastFitFuncValue = math.MaxFloat64
+			return nil, fmt.Errorf("init fit ill-conditioned (kappa=%.3g > %.3g) and GuessInitState returned nil",
+				kappa, ie.maxConditionNumber)
+		}
 	}
 
 	ie.lastFitFuncValue = result.F

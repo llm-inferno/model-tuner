@@ -14,11 +14,20 @@ import (
 // SlidingWindowEstimator maintains a fixed-capacity circular buffer of recent observations
 // and re-runs Nelder-Mead on every Fit() call to produce fresh [α,β,γ] estimates.
 type SlidingWindowEstimator struct {
-	window            []fitObservation
-	windowSize        int
-	minObs            int
-	residualThreshold float64
-	lastFit           []float64
+	window             []fitObservation
+	windowSize         int
+	minObs             int
+	residualThreshold  float64
+	maxConditionNumber float64
+	lastFit            []float64
+}
+
+// SetMaxConditionNumber sets the identifiability guard threshold. When > 0, Fit rejects a
+// fit whose Jacobian condition number (evaluated at the fitted params) exceeds this value —
+// the signature of a degenerate, unidentifiable solution (e.g. collapsed beta/gamma when the
+// observation window lacks operating-point spread). <= 0 disables the guard.
+func (swe *SlidingWindowEstimator) SetMaxConditionNumber(k float64) {
+	swe.maxConditionNumber = k
 }
 
 // NewSlidingWindowEstimator creates a SlidingWindowEstimator with the given window capacity,
@@ -116,6 +125,7 @@ func (swe *SlidingWindowEstimator) Fit() ([]float64, error) {
 		return nil, err
 	}
 
+	used := swe.window
 	cleaned := swe.filterOutliers(swe.window, fitted)
 	if len(cleaned) < len(swe.window) {
 		slog.Info("SlidingWindowEstimator: outliers removed, refitting",
@@ -123,6 +133,30 @@ func (swe *SlidingWindowEstimator) Fit() ([]float64, error) {
 		fitted, err = swe.fitWithX0(fitted, cleaned)
 		if err != nil {
 			return nil, err
+		}
+		used = cleaned
+	}
+
+	// Identifiability guard: reject a fit that sits in a flat parameter direction
+	// (degenerate/unidentifiable, e.g. collapsed beta/gamma). Prefer the last good fit;
+	// otherwise fall back to the analytical single-observation guess rather than adopting
+	// the degenerate solution.
+	if swe.maxConditionNumber > 0 {
+		if kappa := fitConditionNumber(used, fitted); kappa > swe.maxConditionNumber {
+			if swe.lastFit != nil {
+				slog.Warn("SlidingWindowEstimator: ill-conditioned fit, holding previous params",
+					"kappa", kappa, "max", swe.maxConditionNumber,
+					"alpha", fitted[0], "beta", fitted[1], "gamma", fitted[2])
+				return swe.lastFit, nil
+			}
+			if fallback := GuessInitState(swe.window[len(swe.window)-1].toEnv()); fallback != nil {
+				slog.Warn("SlidingWindowEstimator: ill-conditioned fit, no prior fit, using GuessInitState",
+					"kappa", kappa, "max", swe.maxConditionNumber)
+				swe.lastFit = fallback
+				return fallback, nil
+			}
+			return nil, fmt.Errorf("fit ill-conditioned (kappa=%.3g > %.3g) and no fallback available",
+				kappa, swe.maxConditionNumber)
 		}
 	}
 

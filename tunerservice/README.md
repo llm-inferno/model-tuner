@@ -121,6 +121,8 @@ Intended usage from the control-loop `Controller`:
 
 **EKF fallback on poor init fit** — when the `InitEstimator`'s Nelder-Mead objective value (`funcValue`) exceeds `TUNER_INIT_FIT_THRESHOLD` (default 10.0), the `(model, accelerator)` pair is permanently routed to EKF instead of SWNM. This handles the low-utilisation identifiability problem: when observations span a narrow RPM range, the loss surface is flat and Nelder-Mead converges to a degenerate solution that SWNM's warm-start would then propagate. A `funcValue` of 10.0 corresponds roughly to 100% average relative error across 5 observations. Set `TUNER_INIT_FIT_THRESHOLD=0` to disable the fallback and always use SWNM.
 
+**Identifiability guard** (`TUNER_MAX_CONDITION_NUMBER`, default 1000) — a complementary, residual-independent check for the same class of problem. A degenerate fit can be both positive **and** low-residual (so the `funcValue` and outlier checks pass) yet still unidentifiable — it collapses β/γ toward zero and inflates α because the observation window does not span enough operating points (the classic case is a single-replica deployment, where every observation sits at one token point and no token spread exists). After each fit the estimator computes the condition number of the residual Jacobian, taken with respect to the *log* of each parameter so the measure is scale-invariant across α~O(10), β~O(0.01), γ~O(1e-4); a flat (unidentifiable) parameter direction yields a vanishing singular value and a very large condition number. Above the threshold the `SlidingWindowEstimator` holds its last good fit (or `GuessInitState` if there is none) instead of adopting the degenerate solution, and the `InitEstimator` falls back to `GuessInitState` (reporting a benign funcValue so the pair stays on the guarded SWNM path rather than escalating to EKF). Healthy fits sit well below ~100; degenerate fits range from a few thousand to effectively infinite. Set `TUNER_MAX_CONDITION_NUMBER=0` to disable. **Known limitation:** at cold start (no prior good fit) for a single-replica pair under heavy load, the `GuessInitState` fallback derives α ≈ 0.9·ITL from a single queue-inflated observation, so α can be ~10× too high — non-degenerate, but inaccurate enough that the optimizer may find the pair infeasible. Future work: load-aware `GuessInitState`, seeded priors, or a min-replica floor during warm-up.
+
 ## Warm-up Phases
 
 ### EKF mode
@@ -170,6 +172,7 @@ Filter and model parameters are loaded from `default-config-data.json` in the di
 | `TUNER_WINDOW_SIZE` | (SWNM) Number of observations in the sliding window | `10` |
 | `TUNER_RESIDUAL_THRESHOLD` | (SWNM) Per-observation relative error cutoff for outlier rejection | `0.5` |
 | `TUNER_INIT_FIT_THRESHOLD` | (SWNM) Nelder-Mead objective threshold; if `InitEstimator.Fit()` exceeds this the pair falls back to EKF permanently. `0` disables. | `10.0` |
+| `TUNER_MAX_CONDITION_NUMBER` | Identifiability guard: reject a fit whose relative-scaled Jacobian condition number exceeds this (degenerate/unidentifiable, e.g. collapsed β/γ). Holds last-good or `GuessInitState`. `0` disables. | `1000.0` |
 
 ## Running the Demo
 

@@ -83,6 +83,7 @@ The primary deployment is as a sidecar container in the `inferno` pod (see `gith
 | `TUNER_WINDOW_SIZE` | (SWNM) Sliding window capacity | `10` |
 | `TUNER_RESIDUAL_THRESHOLD` | (SWNM) Per-observation relative error cutoff for outlier rejection | `0.5` |
 | `TUNER_INIT_FIT_THRESHOLD` | (SWNM) If `InitEstimator.Fit()` objective value exceeds this, the pair is permanently routed to EKF instead. Set to `0` to disable. | `10.0` |
+| `TUNER_MAX_CONDITION_NUMBER` | Identifiability guard. If a fit's Jacobian condition number (relative-scaled, evaluated at the fitted params) exceeds this, the fit is degenerate/unidentifiable (e.g. collapsed β/γ from a window lacking operating-point spread): the sliding-window estimator holds the last good fit (or `GuessInitState`), and the init estimator falls back to `GuessInitState`. Healthy fits sit well below ~100; degenerate fits exceed a few thousand. Set to `0` to disable. | `1000.0` |
 | `COLLECTOR_HOST` / `COLLECTOR_PORT` | Prometheus collector address | — |
 | `TOKEN` | Bearer token for Prometheus | — |
 | `PROMETHEUS_ADDRESS` | Prometheus server URL | — |
