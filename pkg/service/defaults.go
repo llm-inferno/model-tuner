@@ -31,6 +31,17 @@ const (
 	DefaultInitFitThreshold = 10.0
 )
 
+// Environment variable name and default for the identifiability guard. When > 0, the
+// estimators reject a fit whose Jacobian condition number exceeds this value — the
+// signature of a degenerate, unidentifiable solution (collapsed beta/gamma) produced when
+// the observation window lacks operating-point spread (e.g. a single-replica deployment at
+// steady load). Healthy fits sit well below ~100; degenerate fits exceed a few thousand.
+// Set to 0 to disable the guard.
+const (
+	MaxConditionNumberEnvName = "TUNER_MAX_CONDITION_NUMBER"
+	DefaultMaxConditionNumber = 1000.0
+)
+
 // Default field values used when the ParameterStore has a model/accelerator entry
 // that is not present in the Controller's current ModelData.
 const (

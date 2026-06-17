@@ -63,7 +63,15 @@ func main() {
 		}
 	}
 
+	maxConditionNumber := pkgsvc.DefaultMaxConditionNumber
+	if v := os.Getenv(pkgsvc.MaxConditionNumberEnvName); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 {
+			maxConditionNumber = f
+		}
+	}
+
 	service := pkgsvc.NewTunerService(warmUpCycles, initObs, holdBack, useSliding, windowSize, residualThreshold, initFitThreshold)
+	service.SetMaxConditionNumber(maxConditionNumber)
 	server := tunerservice.NewTunerServer(service)
 
 	estimatorMode := pkgsvc.DefaultEstimatorMode
@@ -78,7 +86,8 @@ func main() {
 		"estimatorMode", estimatorMode,
 		"windowSize", windowSize,
 		"residualThreshold", residualThreshold,
-		"initFitThreshold", initFitThreshold)
+		"initFitThreshold", initFitThreshold,
+		"maxConditionNumber", maxConditionNumber)
 	if err := server.Run(host, port); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
