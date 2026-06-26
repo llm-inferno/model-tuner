@@ -176,7 +176,7 @@ func (ts *TunerService) ekfExcursion(model, accelerator string, seed []float64, 
 		float64(results.ServiceParms.Beta),
 		float64(results.ServiceParms.Gamma),
 	}
-	slog.Warn("EKF excursion: ill-conditioned SWNM fit, emitting seeded EKF update",
+	slog.Info("EKF excursion: ill-conditioned SWNM fit, emitting seeded EKF update",
 		"model", model, "accelerator", accelerator,
 		"seedAlpha", seed[0], "seedBeta", seed[1], "seedGamma", seed[2],
 		"alpha", excursed[0], "beta", excursed[1], "gamma", excursed[2])
