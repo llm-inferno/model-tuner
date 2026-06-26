@@ -19,6 +19,14 @@ type InitEstimator struct {
 	fitDone            bool
 	lastFitFuncValue   float64
 	maxConditionNumber float64
+	seed               []float64
+}
+
+// SetSeed provides a cold-start anchor [alpha, beta, gamma] (e.g. the config initState) used by
+// the GuessInitState fallback to pin gamma and solve alpha/beta from the observation rather than
+// emitting an unidentifiable, potentially infeasible guess. Unset (nil) keeps the legacy heuristic.
+func (ie *InitEstimator) SetSeed(seed []float64) {
+	ie.seed = seed
 }
 
 // SetMaxConditionNumber sets the identifiability guard threshold. When > 0, Fit rejects a
@@ -91,7 +99,7 @@ func (ie *InitEstimator) Fit() ([]float64, error) {
 		return nil, fmt.Errorf("no observations to fit")
 	}
 
-	x0 := GuessInitState(ie.observations[0].toEnv())
+	x0 := GuessInitState(ie.observations[0].toEnv(), ie.seed)
 	if x0 == nil {
 		x0 = []float64{5.0, 0.05, 0.0005}
 	}
@@ -127,7 +135,7 @@ func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
 	if err != nil {
 		ie.lastFitFuncValue = math.MaxFloat64
 		slog.Warn("InitEstimator: Nelder-Mead pre-flight error, using GuessInitState fallback", "err", err)
-		if fallback := GuessInitState(ie.observations[0].toEnv()); fallback != nil {
+		if fallback := GuessInitState(ie.observations[0].toEnv(), ie.seed); fallback != nil {
 			return fallback, nil
 		}
 		return nil, fmt.Errorf("Nelder-Mead failed and GuessInitState returned nil: %w", err)
@@ -139,7 +147,7 @@ func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
 		ie.lastFitFuncValue = math.MaxFloat64
 		slog.Warn("InitEstimator: unexpected Nelder-Mead termination status, using GuessInitState fallback",
 			"status", result.Status)
-		if fallback := GuessInitState(ie.observations[0].toEnv()); fallback != nil {
+		if fallback := GuessInitState(ie.observations[0].toEnv(), ie.seed); fallback != nil {
 			return fallback, nil
 		}
 		return nil, fmt.Errorf("Nelder-Mead unexpected status %v and GuessInitState returned nil", result.Status)
@@ -154,7 +162,7 @@ func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
 		ie.lastFitFuncValue = math.MaxFloat64
 		slog.Warn("InitEstimator: Nelder-Mead returned non-positive params, using GuessInitState fallback",
 			"alpha", x[0], "beta", x[1], "gamma", x[2])
-		if fallback := GuessInitState(ie.observations[0].toEnv()); fallback != nil {
+		if fallback := GuessInitState(ie.observations[0].toEnv(), ie.seed); fallback != nil {
 			return fallback, nil
 		}
 		return nil, fmt.Errorf("Nelder-Mead returned non-positive params and GuessInitState returned nil")
@@ -165,7 +173,7 @@ func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
 	// operating-point spread). Fall back to the analytical single-observation guess.
 	if ie.maxConditionNumber > 0 {
 		if kappa := fitConditionNumber(ie.observations, x); kappa > ie.maxConditionNumber {
-			if fallback := GuessInitState(ie.observations[0].toEnv()); fallback != nil {
+			if fallback := GuessInitState(ie.observations[0].toEnv(), ie.seed); fallback != nil {
 				// The analytical guess is a deliberate, usable result for an
 				// unidentifiable window — report a benign funcValue so the service keeps
 				// this pair on the guarded sliding-window path rather than escalating it

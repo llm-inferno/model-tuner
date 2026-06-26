@@ -21,6 +21,15 @@ type SlidingWindowEstimator struct {
 	maxConditionNumber    float64
 	lastFit               []float64
 	heldOnIllConditioning bool
+	seed                  []float64
+}
+
+// SetSeed provides a cold-start anchor [alpha, beta, gamma] (e.g. the config initState) used by
+// the GuessInitState fallback when there is no prior fit to hold: it pins gamma and solves
+// alpha/beta from the observation rather than emitting an unidentifiable, potentially infeasible
+// guess (issue #17). Unset (nil) keeps the legacy heuristic.
+func (swe *SlidingWindowEstimator) SetSeed(seed []float64) {
+	swe.seed = seed
 }
 
 // HeldLastGoodFit reports whether the most recent Fit() rejected an ill-conditioned
@@ -125,7 +134,7 @@ func (swe *SlidingWindowEstimator) Fit() ([]float64, error) {
 
 	x0 := swe.lastFit
 	if x0 == nil {
-		x0 = GuessInitState(swe.window[len(swe.window)-1].toEnv())
+		x0 = GuessInitState(swe.window[len(swe.window)-1].toEnv(), swe.seed)
 	}
 	if x0 == nil {
 		x0 = []float64{5.0, 0.05, 0.0005}
@@ -161,7 +170,7 @@ func (swe *SlidingWindowEstimator) Fit() ([]float64, error) {
 				swe.heldOnIllConditioning = true
 				return swe.lastFit, nil
 			}
-			if fallback := GuessInitState(swe.window[len(swe.window)-1].toEnv()); fallback != nil {
+			if fallback := GuessInitState(swe.window[len(swe.window)-1].toEnv(), swe.seed); fallback != nil {
 				slog.Warn("SlidingWindowEstimator: ill-conditioned fit, no prior fit, using GuessInitState",
 					"kappa", kappa, "max", swe.maxConditionNumber)
 				swe.lastFit = fallback
@@ -262,7 +271,7 @@ func (swe *SlidingWindowEstimator) fitWithX0(x0 []float64, obs []fitObservation)
 	result, err := optimize.Minimize(problem, scaledX0, settings, &optimize.NelderMead{})
 	if err != nil {
 		slog.Warn("SlidingWindowEstimator: Nelder-Mead pre-flight error, using GuessInitState fallback", "err", err)
-		if fallback := GuessInitState(obs[len(obs)-1].toEnv()); fallback != nil {
+		if fallback := GuessInitState(obs[len(obs)-1].toEnv(), swe.seed); fallback != nil {
 			return fallback, nil
 		}
 		return nil, fmt.Errorf("Nelder-Mead failed and GuessInitState returned nil: %w", err)
@@ -272,7 +281,7 @@ func (swe *SlidingWindowEstimator) fitWithX0(x0 []float64, obs []fitObservation)
 	case optimize.Success, optimize.FunctionConvergence, optimize.FunctionEvaluationLimit:
 	default:
 		slog.Warn("SlidingWindowEstimator: unexpected Nelder-Mead termination", "status", result.Status)
-		if fallback := GuessInitState(obs[len(obs)-1].toEnv()); fallback != nil {
+		if fallback := GuessInitState(obs[len(obs)-1].toEnv(), swe.seed); fallback != nil {
 			return fallback, nil
 		}
 		return nil, fmt.Errorf("Nelder-Mead unexpected status %v", result.Status)
@@ -286,7 +295,7 @@ func (swe *SlidingWindowEstimator) fitWithX0(x0 []float64, obs []fitObservation)
 	if x[0] <= 0 || x[1] <= 0 || x[2] <= 0 {
 		slog.Warn("SlidingWindowEstimator: non-positive params, using GuessInitState fallback",
 			"alpha", x[0], "beta", x[1], "gamma", x[2])
-		if fallback := GuessInitState(obs[len(obs)-1].toEnv()); fallback != nil {
+		if fallback := GuessInitState(obs[len(obs)-1].toEnv(), swe.seed); fallback != nil {
 			return fallback, nil
 		}
 		return nil, fmt.Errorf("Nelder-Mead returned non-positive params")
