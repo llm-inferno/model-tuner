@@ -8,8 +8,11 @@
 //   - [SlidingWindowEstimator]: maintains a fixed-capacity circular buffer of recent
 //     observations and re-runs Nelder-Mead on every Fit() call.
 //
-// [GuessInitState] provides an algebraic cold-start estimate from a single observation.
-// Both estimators use it as a Nelder-Mead warm-start and fallback.
+// [GuessInitState] provides a cold-start estimate from a single observation. Given a seed
+// [alpha,beta,gamma] (via SetSeed) it pins the unidentifiable gamma to the seed and solves
+// alpha,beta from the observation — falling back to the full seed if that is degenerate;
+// with no seed it uses the legacy algebraic heuristic (alpha = baseFactor * ITL). Both
+// estimators use it as a Nelder-Mead warm-start and fallback.
 //
 // This package has no dependency on HTTP routing or the optimizer-light config types.
 // It depends only on pkg/core (for EnvironmentPrefillDecode) and the queue-analysis

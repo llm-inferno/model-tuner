@@ -46,7 +46,7 @@ Observer → Environment → Tuner (EKF predict + update) → GetParams() → Tu
 
 - **`pkg/metrics/`** — Thin Prometheus HTTP client used by `OnlineObserver`.
 
-- **`pkg/estimator/`** — Pure estimation primitives. `InitEstimator` accumulates K observations then runs Nelder-Mead to fit initial (alpha, beta, gamma). `SlidingWindowEstimator` maintains a fixed-capacity circular buffer and re-fits on every cycle. `GuessInitState` provides an algebraic cold-start estimate from a single observation. No HTTP or optimizer-light dependency.
+- **`pkg/estimator/`** — Pure estimation primitives. `InitEstimator` accumulates K observations then runs Nelder-Mead to fit initial (alpha, beta, gamma). `SlidingWindowEstimator` maintains a fixed-capacity circular buffer and re-fits on every cycle. `GuessInitState` provides a cold-start estimate from a single observation: given a seed (`SetSeed`, wired to the config `initState`) it pins the unidentifiable γ to the seed and solves α,β from the observation, falling back to the full seed if degenerate; with no seed it uses the legacy algebraic heuristic. No HTTP or optimizer-light dependency.
 
 - **`pkg/service/`** — Orchestration layer. `TunerService` groups replica `ServerSpec`s by (model, accelerator), runs the init phase via `InitEstimator`, then dispatches to either `SlidingWindowEstimator` (SWNM mode) or the EKF `Tuner` (EKF mode). `ParameterStore` holds tuned parameters across cycles. Importable without gin.
 
@@ -83,7 +83,7 @@ The primary deployment is as a sidecar container in the `inferno` pod (see `gith
 | `TUNER_WINDOW_SIZE` | (SWNM) Sliding window capacity | `10` |
 | `TUNER_RESIDUAL_THRESHOLD` | (SWNM) Per-observation relative error cutoff for outlier rejection | `0.5` |
 | `TUNER_INIT_FIT_THRESHOLD` | (SWNM) If `InitEstimator.Fit()` objective value exceeds this, the pair is permanently routed to EKF instead. Set to `0` to disable. | `10.0` |
-| `TUNER_MAX_CONDITION_NUMBER` | Identifiability guard. If a fit's Jacobian condition number (relative-scaled, evaluated at the fitted params) exceeds this, the fit is degenerate/unidentifiable (e.g. collapsed β/γ from a window lacking operating-point spread): the sliding-window estimator holds the last good fit (or `GuessInitState`), and the init estimator falls back to `GuessInitState`. Healthy fits sit well below ~100; degenerate fits exceed a few thousand. Set to `0` to disable. | `1000.0` |
+| `TUNER_MAX_CONDITION_NUMBER` | Identifiability guard. If a fit's Jacobian condition number (relative-scaled, evaluated at the fitted params) exceeds this, the fit is degenerate/unidentifiable (e.g. collapsed β/γ from a window lacking operating-point spread): the sliding-window estimator holds the last good fit, and the init estimator falls back to `GuessInitState`. When a good fit is held, a transient single-cycle EKF excursion seeded at it refines the fit against the offending observation (#20); `GuessInitState` is seed-anchored to the config `initState`, pinning γ and solving α,β so the cold-start guess stays feasible (#21). Healthy fits sit well below ~100; degenerate fits exceed a few thousand. Set to `0` to disable. | `1000.0` |
 | `COLLECTOR_HOST` / `COLLECTOR_PORT` | Prometheus collector address | — |
 | `TOKEN` | Bearer token for Prometheus | — |
 | `PROMETHEUS_ADDRESS` | Prometheus server URL | — |
