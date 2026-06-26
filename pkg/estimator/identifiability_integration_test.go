@@ -104,6 +104,54 @@ func TestInitEstimatorFit_IllConditionedFallbackNotFlaggedPoor(t *testing.T) {
 	}
 }
 
+// HeldLastGoodFit reports true only when Fit held a genuine prior on an ill-conditioned
+// window — the trigger for the transient EKF excursion (issue #19). It must be false after a
+// well-excited fit and after the cold-start GuessInitState fallback (no prior to hold).
+func TestSlidingWindowFit_HeldLastGoodFitSignal(t *testing.T) {
+	collinear := []fitObservation{
+		mkObs(t, []float64{8.0, 0.016, 0.0005}, 15, 2000, 1000, 128, 2048),
+		mkObs(t, []float64{8.0, 0.016, 0.0005}, 15, 2000, 1000, 128, 2048),
+	}
+
+	// Ill-conditioned with a prior fit: signal true.
+	held := NewSlidingWindowEstimator(10, 2, 0)
+	held.SetMaxConditionNumber(1000)
+	held.SeedLastFit([]float64{8.0, 0.016, 0.0005})
+	held.Seed(collinear)
+	if _, err := held.Fit(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !held.HeldLastGoodFit() {
+		t.Fatal("expected HeldLastGoodFit true when holding a prior on ill-conditioned window")
+	}
+
+	// Ill-conditioned with no prior (cold start): signal false.
+	cold := NewSlidingWindowEstimator(10, 2, 0)
+	cold.SetMaxConditionNumber(1000)
+	cold.Seed(collinear)
+	if _, err := cold.Fit(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cold.HeldLastGoodFit() {
+		t.Fatal("expected HeldLastGoodFit false on cold-start GuessInitState fallback (no prior)")
+	}
+
+	// Well-excited fit: signal false.
+	good := NewSlidingWindowEstimator(10, 2, 0)
+	good.SetMaxConditionNumber(1000)
+	good.Seed([]fitObservation{
+		mkObs(t, []float64{8.0, 0.016, 0.0005}, 12, 500, 400, 128, 2048),
+		mkObs(t, []float64{8.0, 0.016, 0.0005}, 15, 1500, 1000, 128, 2048),
+		mkObs(t, []float64{8.0, 0.016, 0.0005}, 18, 2500, 1600, 128, 2048),
+	})
+	if _, err := good.Fit(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if good.HeldLastGoodFit() {
+		t.Fatal("expected HeldLastGoodFit false after a well-excited (accepted) fit")
+	}
+}
+
 // A well-excited window must pass the guard and return the fitted params (not a fallback).
 func TestSlidingWindowFit_AcceptsWellExcitedFit(t *testing.T) {
 	swe := NewSlidingWindowEstimator(10, 2, 0)

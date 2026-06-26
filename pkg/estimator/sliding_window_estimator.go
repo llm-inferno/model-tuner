@@ -14,12 +14,22 @@ import (
 // SlidingWindowEstimator maintains a fixed-capacity circular buffer of recent observations
 // and re-runs Nelder-Mead on every Fit() call to produce fresh [α,β,γ] estimates.
 type SlidingWindowEstimator struct {
-	window             []fitObservation
-	windowSize         int
-	minObs             int
-	residualThreshold  float64
-	maxConditionNumber float64
-	lastFit            []float64
+	window                []fitObservation
+	windowSize            int
+	minObs                int
+	residualThreshold     float64
+	maxConditionNumber    float64
+	lastFit               []float64
+	heldOnIllConditioning bool
+}
+
+// HeldLastGoodFit reports whether the most recent Fit() rejected an ill-conditioned
+// (unidentifiable) solution and returned the previously held good fit instead. It is true
+// only when a genuine prior fit existed to fall back on — not on the cold-start path where
+// no prior exists and the analytical GuessInitState is used. Callers use this to drive a
+// transient EKF excursion seeded at the held good fit (see issue #19).
+func (swe *SlidingWindowEstimator) HeldLastGoodFit() bool {
+	return swe.heldOnIllConditioning
 }
 
 // SetMaxConditionNumber sets the identifiability guard threshold. When > 0, Fit rejects a
@@ -111,6 +121,7 @@ func (swe *SlidingWindowEstimator) Fit() ([]float64, error) {
 	if len(swe.window) == 0 {
 		return nil, fmt.Errorf("no observations in window")
 	}
+	swe.heldOnIllConditioning = false
 
 	x0 := swe.lastFit
 	if x0 == nil {
@@ -147,6 +158,7 @@ func (swe *SlidingWindowEstimator) Fit() ([]float64, error) {
 				slog.Warn("SlidingWindowEstimator: ill-conditioned fit, holding previous params",
 					"kappa", kappa, "max", swe.maxConditionNumber,
 					"alpha", fitted[0], "beta", fitted[1], "gamma", fitted[2])
+				swe.heldOnIllConditioning = true
 				return swe.lastFit, nil
 			}
 			if fallback := GuessInitState(swe.window[len(swe.window)-1].toEnv()); fallback != nil {

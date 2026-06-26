@@ -165,6 +165,81 @@ func TestTunerService_SWNM_HighFuncValue_FallsBackToEKF(t *testing.T) {
 	}
 }
 
+// The transient EKF excursion (issue #19) seeded at a known-good fit must, given a single
+// collinear observation, hold the unobservable beta/gamma near the seed and return feasible
+// positive params — never collapsing or inflating them.
+func TestTunerService_EKFExcursion_HoldsBetaGammaNearSeed(t *testing.T) {
+	t.Setenv("CONFIG_DATA_DIR", "../../config-data")
+	ts := NewTunerService(0, 2, false, true, 5, DefaultResidualThreshold, 0)
+
+	seed := []float64{8.0, 0.016, 0.0005}
+	env := makeTestEnv(15, 55, 6, 120, 700, 64)
+
+	got := ts.ekfExcursion("llama", "H100", seed, env)
+	if got == nil {
+		t.Fatal("expected excursion to return params, got nil (config load or EKF validation failed)")
+	}
+	if got[0] <= 0 || got[1] <= 0 || got[2] <= 0 {
+		t.Fatalf("expected positive params, got %v", got)
+	}
+	// beta/gamma are unobservable at a single operating point; the EKF holds them within the
+	// seed-derived [seed/10, seed*10] band rather than collapsing toward 0 or inflating.
+	if got[1] < seed[1]/10 || got[1] > seed[1]*10 {
+		t.Errorf("beta drifted outside seed-anchored band: seed=%g got=%g", seed[1], got[1])
+	}
+	if got[2] < seed[2]/10 || got[2] > seed[2]*10 {
+		t.Errorf("gamma drifted outside seed-anchored band: seed=%g got=%g", seed[2], got[2])
+	}
+}
+
+// End-to-end through the tuneGroupSliding seam: an ill-conditioned cycle that holds a prior
+// must run the excursion and store feasible, seed-anchored params instead of the held value.
+func TestTunerService_SWNM_IllConditioned_ExcursionEmitsFeasibleParams(t *testing.T) {
+	t.Setenv("CONFIG_DATA_DIR", "../../config-data")
+	ts := NewTunerService(0, 2, false, true, 5, DefaultResidualThreshold, 0)
+	ts.SetMaxConditionNumber(1000)
+	model, acc := "llama", "H100"
+	key := makeKey(model, acc)
+
+	ie := estimator.NewInitEstimator(2, false)
+	ie.AddObservation(makeTestEnv(15, 55, 6, 120, 700, 64))
+	ie.AddObservation(makeTestEnv(15, 55, 6, 120, 700, 64))
+	ts.estimators[key] = ie
+
+	goodFit := []float64{8.0, 0.016, 0.0005}
+	swe := estimator.NewSlidingWindowEstimator(5, 2, DefaultResidualThreshold)
+	swe.SetMaxConditionNumber(1000)
+	swe.SeedLastFit(goodFit)
+	// Collinear window (identical operating point) → ill-conditioned → Fit holds goodFit.
+	swe.AddObservation(makeTestEnv(15, 55, 6, 120, 700, 64))
+	swe.AddObservation(makeTestEnv(15, 55, 6, 120, 700, 64))
+	ts.slidingEstimators[key] = swe
+
+	env := makeTestEnv(15, 55, 6, 120, 700, 64)
+	if err := ts.tuneGroupSliding(model, acc, key, ie, env); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !swe.HeldLastGoodFit() {
+		t.Fatal("test setup: expected ill-conditioned hold to trigger (HeldLastGoodFit=false)")
+	}
+	// The excursion must not mutate the held good fit (it aliases SWNM's frozen prior).
+	if goodFit[0] != 8.0 || goodFit[1] != 0.016 || goodFit[2] != 0.0005 {
+		t.Fatalf("excursion mutated the held prior in place: %v", goodFit)
+	}
+
+	p := ts.paramStore.Get(model, acc)
+	if p == nil {
+		t.Fatal("expected params stored after excursion cycle")
+	}
+	if p.Alpha <= 0 || p.Beta <= 0 || p.Gamma <= 0 {
+		t.Fatalf("expected positive params, got alpha=%v beta=%v gamma=%v", p.Alpha, p.Beta, p.Gamma)
+	}
+	// beta/gamma held near the good seed, not collapsed.
+	if float64(p.Beta) < goodFit[1]/10 || float64(p.Gamma) < goodFit[2]/10 {
+		t.Errorf("beta/gamma collapsed below seed-anchored floor: beta=%v gamma=%v", p.Beta, p.Gamma)
+	}
+}
+
 func TestTunerService_IsWarmingUp_SWNM_EKFFallbackPair(t *testing.T) {
 	ts := NewTunerService(0, 1, false, true, DefaultWindowSize, DefaultResidualThreshold, 0)
 	key := makeKey("llama", "H100")

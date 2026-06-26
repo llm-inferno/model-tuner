@@ -116,6 +116,19 @@ func (ts *TunerService) tuneGroupSliding(model, accelerator, key string, ie *est
 		return fmt.Errorf("SlidingWindowEstimator.Fit for %s/%s: %w", model, accelerator, err)
 	}
 
+	// Identifiability gap (issue #19): the fit was ill-conditioned and SWNM held the last good
+	// fit (`fitted`). Rather than emit that stale value, run one transient EKF predict+update
+	// seeded at the held good fit. The EKF regularizes via its prior — in the unobservable
+	// beta/gamma direction the Kalman gain is ~0, so it holds them near the seed and only nudges
+	// the observable combination to fit the offending point. Worst case it returns the seed
+	// (== today's hold); it never emits collapsed or inflated params. The tuner is discarded and
+	// SWNM resumes next cycle.
+	if swe.HeldLastGoodFit() {
+		if excursed := ts.ekfExcursion(model, accelerator, fitted, env); excursed != nil {
+			fitted = excursed
+		}
+	}
+
 	updateCount := 0
 	if existing := ts.paramStore.Get(model, accelerator); existing != nil {
 		updateCount = existing.UpdateCount
@@ -133,6 +146,41 @@ func (ts *TunerService) tuneGroupSliding(model, accelerator, key string, ie *est
 		"alpha", fitted[0], "beta", fitted[1], "gamma", fitted[2],
 		"updateCount", updateCount+1)
 	return nil
+}
+
+// ekfExcursion runs a single seeded EKF predict+update for the transient SWNM->EKF excursion
+// (issue #19), seeded at the held good SWNM fit. It returns the EKF-updated [alpha,beta,gamma]
+// on success, or nil to signal the caller to keep the held fit (the safe fallback). skipNIS is
+// true so the offending collinear point is absorbed; the seed and seed-derived bounds anchor
+// the result, and the unobservable beta/gamma direction is held by the near-zero Kalman gain.
+func (ts *TunerService) ekfExcursion(model, accelerator string, seed []float64, env *core.EnvironmentPrefillDecode) []float64 {
+	tuner, err := ts.newSeededTuner(seed, env)
+	if err != nil {
+		slog.Warn("EKF excursion: tuner construction failed, holding SWNM fit",
+			"model", model, "accelerator", accelerator, "err", err)
+		return nil
+	}
+	results, err := tuner.RunWithValidation(env, true)
+	if err != nil {
+		slog.Warn("EKF excursion: run error, holding SWNM fit",
+			"model", model, "accelerator", accelerator, "err", err)
+		return nil
+	}
+	if results.ValidationFailed {
+		slog.Info("EKF excursion: update rejected, holding SWNM fit",
+			"model", model, "accelerator", accelerator)
+		return nil
+	}
+	excursed := []float64{
+		float64(results.ServiceParms.Alpha),
+		float64(results.ServiceParms.Beta),
+		float64(results.ServiceParms.Gamma),
+	}
+	slog.Warn("EKF excursion: ill-conditioned SWNM fit, emitting seeded EKF update",
+		"model", model, "accelerator", accelerator,
+		"seedAlpha", seed[0], "seedBeta", seed[1], "seedGamma", seed[2],
+		"alpha", excursed[0], "beta", excursed[1], "gamma", excursed[2])
+	return excursed
 }
 
 // Tune accepts per-replica ServerSpecs, runs EKF or SWNM tuning for each
@@ -276,10 +324,7 @@ func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.En
 			if err != nil {
 				return nil, err
 			}
-			if err := tuner.SetObservationFunc(core.NewQueueModelSystemFuncCreatorPrefillDecode(tuner)); err != nil {
-				return nil, err
-			}
-			return tuner, nil
+			return attachQueueModelObsFunc(tuner)
 		}
 	} else {
 		if fitInitState != nil {
@@ -293,10 +338,38 @@ func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.En
 	if err != nil {
 		return nil, err
 	}
+	return attachQueueModelObsFunc(tuner)
+}
+
+// attachQueueModelObsFunc wires the prefill-decode queue-model observation function h(x) onto
+// a freshly constructed Tuner and returns it.
+func attachQueueModelObsFunc(tuner *core.Tuner) (*core.Tuner, error) {
 	if err := tuner.SetObservationFunc(core.NewQueueModelSystemFuncCreatorPrefillDecode(tuner)); err != nil {
 		return nil, err
 	}
 	return tuner, nil
+}
+
+// newSeededTuner builds a fresh, single-use EKF Tuner whose state mean is seeded at the given
+// [alpha,beta,gamma] values, with the queue-model observation function attached. setInitState
+// also derives MinState/MaxState from the seed, so the filter is bounded around the seed. Used
+// for the transient SWNM->EKF excursion (issue #19): one predict+update from a known-good state.
+func (ts *TunerService) newSeededTuner(seed []float64, env *core.EnvironmentPrefillDecode) (*core.Tuner, error) {
+	configData, err := utils.LoadConfigForServer(config.DefaultConfigType)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	if seed != nil {
+		// Copy: the EKF state aliases ModelData.InitState and is mutated in place by the
+		// predict/update, so passing the caller's slice (e.g. SWNM's held lastFit) directly
+		// would corrupt the frozen prior the excursion is meant to re-anchor to.
+		setInitState(&configData.ModelData, append([]float64(nil), seed...))
+	}
+	tuner, err := core.NewTuner(configData, env)
+	if err != nil {
+		return nil, err
+	}
+	return attachQueueModelObsFunc(tuner)
 }
 
 func setInitState(md *config.ModelData, initState []float64) {
