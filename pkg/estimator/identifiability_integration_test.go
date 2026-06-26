@@ -48,7 +48,7 @@ func TestSlidingWindowFit_FallsBackToGuessWhenIllConditionedNoPrior(t *testing.T
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := GuessInitState(swe.window[len(swe.window)-1].toEnv())
+	want := GuessInitState(swe.window[len(swe.window)-1].toEnv(), nil)
 	if want == nil {
 		t.Fatal("test setup: GuessInitState returned nil")
 	}
@@ -73,7 +73,7 @@ func TestInitEstimatorFit_FallsBackToGuessWhenIllConditioned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := GuessInitState(ie.observations[0].toEnv())
+	want := GuessInitState(ie.observations[0].toEnv(), nil)
 	if want == nil {
 		t.Fatal("test setup: GuessInitState returned nil")
 	}

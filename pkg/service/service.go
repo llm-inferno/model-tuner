@@ -29,6 +29,24 @@ type TunerService struct {
 	initFitThreshold   float64
 	maxConditionNumber float64
 	ekfFallbacks       map[string]bool
+	coldSeed           []float64
+	coldSeedLoaded     bool
+}
+
+// coldStartSeed returns the cold-start anchor [alpha, beta, gamma] used by the estimators'
+// GuessInitState fallback (issue #17): the config initState. Loaded once and cached; nil on
+// load failure (estimators then keep their legacy heuristic).
+func (ts *TunerService) coldStartSeed() []float64 {
+	if ts.coldSeedLoaded {
+		return ts.coldSeed
+	}
+	ts.coldSeedLoaded = true
+	if configData, err := utils.LoadConfigForServer(config.DefaultConfigType); err == nil {
+		ts.coldSeed = configData.ModelData.InitState
+	} else {
+		slog.Warn("cold-start seed unavailable: config load failed, estimators use legacy guess", "err", err)
+	}
+	return ts.coldSeed
 }
 
 // SetMaxConditionNumber sets the identifiability guard threshold applied to every estimator
@@ -61,6 +79,7 @@ func (ts *TunerService) estimatorFor(key string) *estimator.InitEstimator {
 	}
 	ie := estimator.NewInitEstimator(ts.initObs, ts.holdBack)
 	ie.SetMaxConditionNumber(ts.maxConditionNumber)
+	ie.SetSeed(ts.coldStartSeed())
 	ts.estimators[key] = ie
 	return ie
 }
@@ -71,6 +90,7 @@ func (ts *TunerService) slidingEstimatorFor(key string, ie *estimator.InitEstima
 	}
 	swe := estimator.NewSlidingWindowEstimator(ts.windowSize, ts.initObs, ts.residualThreshold)
 	swe.SetMaxConditionNumber(ts.maxConditionNumber)
+	swe.SetSeed(ts.coldStartSeed())
 	swe.SeedFromEstimator(ie)
 	if fitted, err := ie.Fit(); err == nil {
 		fv := ie.LastFitFuncValue()
@@ -329,7 +349,7 @@ func (ts *TunerService) createTuner(model, accelerator string, firstEnv *core.En
 	} else {
 		if fitInitState != nil {
 			setInitState(&configData.ModelData, fitInitState)
-		} else if initState := estimator.GuessInitState(firstEnv); initState != nil {
+		} else if initState := estimator.GuessInitState(firstEnv, configData.ModelData.InitState); initState != nil {
 			setInitState(&configData.ModelData, initState)
 		}
 	}

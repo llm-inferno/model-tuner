@@ -240,6 +240,42 @@ func TestTunerService_SWNM_IllConditioned_ExcursionEmitsFeasibleParams(t *testin
 	}
 }
 
+// Cold-start single-replica regression (issue #17): a collinear, ITL-inflated observation with
+// no prior fit must NOT emit an infeasible (~20x) gamma. With the config initState seed wired in,
+// the guess pins gamma to the seed (~5e-5, feasible) and solves alpha/beta from the observation.
+func TestTunerService_SWNM_ColdStart_SeedAnchoredGammaFeasible(t *testing.T) {
+	t.Setenv("CONFIG_DATA_DIR", "../../config-data")
+	ts := NewTunerService(0, 2, false, true, 5, DefaultResidualThreshold, 0)
+	ts.SetMaxConditionNumber(1000)
+
+	// Seed must load from config initState (default = [5.0, 0.05, 5e-5]).
+	seed := ts.coldStartSeed()
+	if len(seed) != 3 || seed[2] <= 0 {
+		t.Fatalf("expected config initState seed, got %v", seed)
+	}
+
+	// run17-like single-replica observation, repeated (collinear → unidentifiable).
+	spec := makeTestSpec("qwen_2_5_14b", "H100", 265, 80.48, 15.911, 1123, 487, 128)
+	var result *optconfig.ModelData
+	for i := 0; i < 4; i++ {
+		r, err := ts.Tune([]optconfig.ServerSpec{spec})
+		if err == nil {
+			result = r
+		}
+	}
+	if result == nil || len(result.PerfData) == 0 {
+		t.Fatal("expected tuned params after cold-start cycles")
+	}
+	p := result.PerfData[0].PerfParms
+	if p.Alpha <= 0 || p.Beta <= 0 || p.Gamma <= 0 {
+		t.Fatalf("expected positive params, got alpha=%v beta=%v gamma=%v", p.Alpha, p.Beta, p.Gamma)
+	}
+	// The bug emitted gamma ~1e-3; the seed-anchored guess keeps it near the feasible seed gamma.
+	if float64(p.Gamma) > 5*seed[2] {
+		t.Errorf("gamma not anchored: got %g, seed %g (legacy bug was ~1e-3)", p.Gamma, seed[2])
+	}
+}
+
 func TestTunerService_IsWarmingUp_SWNM_EKFFallbackPair(t *testing.T) {
 	ts := NewTunerService(0, 1, false, true, DefaultWindowSize, DefaultResidualThreshold, 0)
 	key := makeKey("llama", "H100")
