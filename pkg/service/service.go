@@ -29,6 +29,7 @@ type TunerService struct {
 	initFitThreshold   float64
 	maxConditionNumber float64
 	ekfFallbacks       map[string]bool
+	calibrated         map[string]bool
 	coldSeed           []float64
 	coldSeedLoaded     bool
 }
@@ -70,6 +71,7 @@ func NewTunerService(warmUpCycles, initObs int, holdBack bool, useSliding bool, 
 		slidingEstimators: make(map[string]*estimator.SlidingWindowEstimator),
 		initFitThreshold:  initFitThreshold,
 		ekfFallbacks:      make(map[string]bool),
+		calibrated:        make(map[string]bool),
 	}
 }
 
@@ -518,4 +520,141 @@ func (ts *TunerService) Merge(modelData *optconfig.ModelData) *optconfig.ModelDa
 	}
 
 	return &optconfig.ModelData{PerfData: result}
+}
+
+// CalibrationStatus reports, for one (model, accelerator) pair the tuner has seen, the facts the
+// controller's calibration trigger needs: whether warm-up observations have been collected, the
+// identifiability (Jacobian condition number) of the most recent fit, whether a calibration has
+// already succeeded for this pair, and the derived NeedsCalibration decision. NeedsCalibration is
+// true when warm-up collected enough observations to attempt a fit, that fit was ill-conditioned
+// (natural excitation insufficient — beta/gamma unidentifiable), and the pair has not yet been
+// calibrated. In-memory: calibration state resets on tuner restart (see project design).
+type CalibrationStatus struct {
+	Model            string  `json:"model"`
+	Accelerator      string  `json:"accelerator"`
+	StorePresent     bool    `json:"storePresent"`
+	Calibrated       bool    `json:"calibrated"`
+	ObsCount         int     `json:"obsCount"`
+	ObsTarget        int     `json:"obsTarget"`
+	ConditionNumber  float64 `json:"conditionNumber"`
+	IllConditioned   bool    `json:"illConditioned"`
+	NeedsCalibration bool    `json:"needsCalibration"`
+}
+
+// CalibrationStatuses returns the calibration status of every (model, accelerator) pair the tuner
+// has begun collecting observations for. Pairs not yet seen by /tune are absent (the controller
+// cannot judge excitation before any observation exists).
+func (ts *TunerService) CalibrationStatuses() []CalibrationStatus {
+	out := make([]CalibrationStatus, 0, len(ts.estimators))
+	for key, ie := range ts.estimators {
+		model, accelerator := splitKey(key)
+		kappa := ie.LastConditionNumber()
+		illConditioned := ts.maxConditionNumber > 0 && kappa > ts.maxConditionNumber
+		calibrated := ts.calibrated[key]
+		// A fit must have run (IsReady ⇒ init observations collected and a fit attempted) before
+		// kappa is meaningful; only then can excitation be judged insufficient.
+		needs := ie.IsReady() && ie.FitDone() && illConditioned && !calibrated
+		out = append(out, CalibrationStatus{
+			Model:            model,
+			Accelerator:      accelerator,
+			StorePresent:     ts.paramStore.Get(model, accelerator) != nil,
+			Calibrated:       calibrated,
+			ObsCount:         ie.ObsCount(),
+			ObsTarget:        ie.MinObs(),
+			ConditionNumber:  kappa,
+			IllConditioned:   illConditioned,
+			NeedsCalibration: needs,
+		})
+	}
+	return out
+}
+
+// Calibrate fits (alpha, beta, gamma) from a batch of deliberately-diverse sweep observations
+// (benchmarking-on-the-fly) for each (model, accelerator) group, in one shot. Unlike Tune — which
+// folds one operating point per cycle into the EKF/sliding estimators — Calibrate fits jointly over
+// all swept operating points, so the parameters are identifiable by construction. On success it
+// stores the fit (graduated, so warm-up no longer blocks the pair) and seeds the per-pair estimators
+// from the sweep, so subsequent Tune cycles track drift from the calibrated point rather than
+// re-warming. Reuses the same InitEstimator multi-point Nelder-Mead fit and condition-number guard
+// as the normal path. Returns the calibrated ModelData; errors if no group could be calibrated.
+func (ts *TunerService) Calibrate(specs []optconfig.ServerSpec) (*optconfig.ModelData, error) {
+	groups := groupByModelAccelerator(specs)
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("no calibration points with active traffic in request")
+	}
+
+	calibratedAny := false
+	for key, replicas := range groups {
+		model, accelerator := splitKey(key)
+		if err := ts.calibrateGroup(model, accelerator, key, replicas); err != nil {
+			slog.Warn("calibration failed for group", "key", key, "err", err)
+			continue
+		}
+		calibratedAny = true
+	}
+	if !calibratedAny {
+		return nil, fmt.Errorf("calibration produced no results for any model/accelerator group")
+	}
+
+	modelData := ts.buildModelData(groups)
+	if len(modelData.PerfData) == 0 {
+		return nil, fmt.Errorf("calibration produced no results for any model/accelerator group")
+	}
+	return modelData, nil
+}
+
+// calibrateGroup runs a single-shot multi-point fit over one group's sweep observations, stores the
+// result, and seeds the per-pair estimators so the normal Tune path continues from the calibrated
+// fit. A still-ill-conditioned fit (the sweep grid lacked operating-point spread) is rejected
+// rather than stored.
+func (ts *TunerService) calibrateGroup(model, accelerator, key string, replicas []optconfig.ServerSpec) error {
+	envs := buildEnvironments(replicas)
+	if len(envs) < 2 {
+		return fmt.Errorf("need >= 2 calibration points for %s/%s, got %d", model, accelerator, len(envs))
+	}
+
+	ie := estimator.NewInitEstimator(len(envs), false)
+	ie.SetMaxConditionNumber(ts.maxConditionNumber)
+	ie.SetSeed(ts.coldStartSeed())
+	for _, env := range envs {
+		ie.AddObservation(env)
+	}
+
+	fitted, err := ie.Fit()
+	if err != nil {
+		return fmt.Errorf("calibration fit for %s/%s: %w", model, accelerator, err)
+	}
+	if ts.maxConditionNumber > 0 && ie.LastConditionNumber() > ts.maxConditionNumber {
+		return fmt.Errorf("calibration fit for %s/%s ill-conditioned (kappa=%.3g > %.3g): sweep grid lacks operating-point spread",
+			model, accelerator, ie.LastConditionNumber(), ts.maxConditionNumber)
+	}
+
+	// Store graduated so the warm-up gate no longer blocks this pair (UpdateCount >= warmUpCycles).
+	ts.paramStore.Set(model, accelerator, &LearnedParameters{
+		Alpha:       float32(fitted[0]),
+		Beta:        float32(fitted[1]),
+		Gamma:       float32(fitted[2]),
+		UpdateCount: ts.warmUpCycles,
+		LastUpdated: time.Now(),
+	})
+
+	// Seed the per-pair estimators from the sweep so subsequent Tune cycles track drift from the
+	// calibrated fit (rich warm-up in one shot) rather than re-collecting init observations.
+	ts.estimators[key] = ie
+	delete(ts.ekfFallbacks, key)
+	if ts.useSliding {
+		swe := estimator.NewSlidingWindowEstimator(ts.windowSize, ts.initObs, ts.residualThreshold)
+		swe.SetMaxConditionNumber(ts.maxConditionNumber)
+		swe.SetSeed(ts.coldStartSeed())
+		swe.SeedFromEstimator(ie)
+		swe.SeedLastFit(fitted)
+		ts.slidingEstimators[key] = swe
+	}
+	ts.calibrated[key] = true
+
+	slog.Info("calibrated parameters (benchmarking-on-the-fly)",
+		"model", model, "accelerator", accelerator,
+		"alpha", fitted[0], "beta", fitted[1], "gamma", fitted[2],
+		"points", len(envs), "conditionNumber", ie.LastConditionNumber())
+	return nil
 }

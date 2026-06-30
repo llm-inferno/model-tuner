@@ -64,6 +64,39 @@ func (ts *TunerServer) handleWarmUp(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"warmingUp": ts.service.IsWarmingUp()})
 }
 
+// POST /calibrate
+// Request body: []config.ServerSpec — a batch of deliberately-diverse sweep operating points
+//
+//	(benchmarking-on-the-fly), all for one or more (model, accelerator) groups.
+//
+// Response: config.ModelData with calibrated alpha/beta/gamma per group.
+// Returns 422 if no group could be calibrated (e.g. the sweep lacked operating-point spread).
+func (ts *TunerServer) handleCalibrate(c *gin.Context) {
+	var specs []optconfig.ServerSpec
+	if err := c.ShouldBindJSON(&specs); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
+		return
+	}
+	if len(specs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "calibration points must not be empty"})
+		return
+	}
+
+	modelData, err := ts.service.Calibrate(specs)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, modelData)
+}
+
+// GET /calibration-status
+// Response: {"statuses": []CalibrationStatus} — per (model, accelerator) pair the tuner has seen,
+// the facts the controller's calibration trigger consumes (NeedsCalibration in particular).
+func (ts *TunerServer) handleCalibrationStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"statuses": ts.service.CalibrationStatuses()})
+}
+
 // POST /merge
 // Request body: config.ModelData (the Controller's current ModelData)
 // Response:     config.ModelData with PerfParms overlaid from the ParameterStore;

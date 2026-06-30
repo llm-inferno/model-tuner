@@ -22,6 +22,8 @@ func NewTunerServer(service *pkgsvc.TunerService) *TunerServer {
 	router.POST("/tune", ts.handleTune)
 	router.GET("/getparams", ts.handleGetParams)
 	router.GET("/warmup", ts.handleWarmUp)
+	router.POST("/calibrate", ts.handleCalibrate)
+	router.GET("/calibration-status", ts.handleCalibrationStatus)
 	router.POST("/merge", ts.handleMerge)
 	return ts
 }

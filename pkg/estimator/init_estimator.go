@@ -13,13 +13,14 @@ import (
 
 // InitEstimator accumulates observations before the EKF starts and fits initial parameters.
 type InitEstimator struct {
-	observations       []fitObservation
-	minObs             int
-	holdBack           bool
-	fitDone            bool
-	lastFitFuncValue   float64
-	maxConditionNumber float64
-	seed               []float64
+	observations        []fitObservation
+	minObs              int
+	holdBack            bool
+	fitDone             bool
+	lastFitFuncValue    float64
+	maxConditionNumber  float64
+	lastConditionNumber float64
+	seed                []float64
 }
 
 // SetSeed provides a cold-start anchor [alpha, beta, gamma] (e.g. the config initState) used by
@@ -89,6 +90,12 @@ func (ie *InitEstimator) FitDone() bool { return ie.fitDone }
 // the fit was rejected as ill-conditioned and fell back to GuessInitState (a benign value that
 // deliberately keeps the pair on the guarded sliding-window path rather than escalating to EKF).
 func (ie *InitEstimator) LastFitFuncValue() float64 { return ie.lastFitFuncValue }
+
+// LastConditionNumber returns the Jacobian condition number computed at the most recent Fit()
+// (0 if Fit has not run or the identifiability guard is disabled). A large value signals a
+// degenerate, unidentifiable fit — the observations lack operating-point spread. The calibration
+// trigger reads this to decide whether natural excitation during warm-up was sufficient.
+func (ie *InitEstimator) LastConditionNumber() float64 { return ie.lastConditionNumber }
 
 // Fit runs Nelder-Mead minimisation over all accumulated observations to find the
 // (alpha, beta, gamma) that best explains all K observations jointly via the full
@@ -172,7 +179,9 @@ func (ie *InitEstimator) fitWithX0(x0 []float64) ([]float64, error) {
 	// (flat parameter direction, e.g. collapsed beta/gamma from observations lacking
 	// operating-point spread). Fall back to the analytical single-observation guess.
 	if ie.maxConditionNumber > 0 {
-		if kappa := fitConditionNumber(ie.observations, x); kappa > ie.maxConditionNumber {
+		kappa := fitConditionNumber(ie.observations, x)
+		ie.lastConditionNumber = kappa
+		if kappa > ie.maxConditionNumber {
 			if fallback := GuessInitState(ie.observations[0].toEnv(), ie.seed); fallback != nil {
 				// The analytical guess is a deliberate, usable result for an
 				// unidentifiable window — report a benign funcValue so the service keeps

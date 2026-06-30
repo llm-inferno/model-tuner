@@ -87,15 +87,41 @@ Returns `true` if:
 
 Returns `false` once all pairs have graduated to normal operation, or if `TUNER_WARM_UP_CYCLES=0` (EKF) / collection phase complete (SWNM).
 
+### `GET /calibration-status`
+
+Reports, per `(model, accelerator)` pair the tuner has begun observing, the facts the control-loop's **benchmarking-on-the-fly** trigger consumes. `needsCalibration` is `true` when the pair has collected its initial observations, the resulting fit is **ill-conditioned** (`conditionNumber > TUNER_MAX_CONDITION_NUMBER` — natural load did not span enough operating points to identify β/γ), and the pair has not been calibrated yet. Pairs not yet seen by `/tune` are absent.
+
+**Response:**
+
+```json
+{ "statuses": [
+  { "model": "llama3-8b", "accelerator": "A100",
+    "storePresent": true, "calibrated": false,
+    "obsCount": 3, "obsTarget": 3,
+    "conditionNumber": 1.2e18, "illConditioned": true, "needsCalibration": true }
+] }
+```
+
+### `POST /calibrate`
+
+Fits `(alpha, beta, gamma)` jointly from a **batch of deliberately-diverse swept operating points** for each `(model, accelerator)` group, in one shot — the persistent-excitation cure for the single-operating-point unidentifiability the guards above only mitigate. Unlike `/tune` (one operating point per cycle), the joint multi-point fit reuses the same `InitEstimator` Nelder-Mead + condition-number guard. On success it stores the fit graduated (so the warm-up gate clears) and seeds the per-pair estimators from the sweep so subsequent `/tune` cycles track drift from the calibrated point. The control-loop Collector produces the sweep points; the controller drives this endpoint only when `/calibration-status` reports `needsCalibration`.
+
+**Request body:** `[]config.ServerSpec` (the swept operating points; same shape as `/tune`).
+
+**Response:** `config.ModelData` with the calibrated `alpha/beta/gamma`. `422` if no group could be calibrated (e.g. the sweep grid lacked operating-point spread and the fit is still ill-conditioned).
+
+Calibration state (`calibrated` flags, `ParameterStore`) is in-memory — a pair is re-calibrated after a tuner restart.
+
 ## Control-Loop Integration
 
 Intended usage from the control-loop `Controller`:
 
 1. Call the Collector to obtain `ServerCollectorInfo` (includes `ReplicaSpecs`).
 2. `POST` `ReplicaSpecs` to `/tune` — EKF parameters are updated in the `ParameterStore`.
-3. `POST` current `ModelData` to `/merge` — receive merged `ModelData` with tuned `PerfParms` overlaid.
-4. Set `SystemData.Spec.Models` to the merged `ModelData`.
-5. `POST` `SystemData` to the Optimizer as usual.
+3. *(optional, benchmarking-on-the-fly)* `GET /calibration-status`; for any pair with `needsCalibration`, drive a short load sweep and `POST` the points to `/calibrate` before merging, so an identifiable fit replaces the ill-conditioned one this cycle.
+4. `POST` current `ModelData` to `/merge` — receive merged `ModelData` with tuned `PerfParms` overlaid.
+5. Set `SystemData.Spec.Models` to the merged `ModelData`.
+6. `POST` `SystemData` to the Optimizer as usual.
 
 ## Estimation Features
 
