@@ -135,6 +135,62 @@ func TestCalibrate_RejectsSingleOperatingPoint(t *testing.T) {
 	}
 }
 
+// TestCalibrate_ResponseExcludesGroupsThatFailedThisCall verifies that a group which fails
+// calibration in the current call does not leak previously-stored params into the response. A
+// pair is first calibrated and stored; a later call re-submits that pair as an unidentifiable
+// single-operating-point batch (rejected) alongside a second pair that calibrates cleanly. The
+// response must contain only the freshly-calibrated pair, not the stale-params rejected one.
+func TestCalibrate_ResponseExcludesGroupsThatFailedThisCall(t *testing.T) {
+	const acc = "H100"
+	const staleModel, freshModel = "qwen_2_5_14b", "llama_3_8b"
+	const maxBatch = 128
+	truth := [3]float64{12.0, 0.04, 0.00006}
+
+	ts := NewTunerService(3, 3, false, false, DefaultWindowSize, DefaultResidualThreshold, 0)
+	ts.SetMaxConditionNumber(DefaultMaxConditionNumber)
+
+	// Pre-populate the store: calibrate the stale pair with a proper spread.
+	seed := []optconfig.ServerSpec{
+		sweepSpec(t, staleModel, acc, 30, 512, 256, maxBatch, truth),
+		sweepSpec(t, staleModel, acc, 60, 512, 256, maxBatch, truth),
+		sweepSpec(t, staleModel, acc, 90, 512, 256, maxBatch, truth),
+		sweepSpec(t, staleModel, acc, 120, 512, 256, maxBatch, truth),
+		sweepSpec(t, staleModel, acc, 60, 1024, 128, maxBatch, truth),
+		sweepSpec(t, staleModel, acc, 60, 256, 512, maxBatch, truth),
+	}
+	if _, err := ts.Calibrate(seed); err != nil {
+		t.Fatalf("initial Calibrate failed: %v", err)
+	}
+	if ts.GetParams(staleModel, acc) == nil {
+		t.Fatal("expected stored params after initial calibration")
+	}
+
+	// Mixed call: the stale pair as an unidentifiable batch (rejected) plus a fresh pair that
+	// calibrates cleanly.
+	mixed := []optconfig.ServerSpec{
+		sweepSpec(t, staleModel, acc, 60, 512, 256, maxBatch, truth),
+		sweepSpec(t, staleModel, acc, 60, 512, 256, maxBatch, truth),
+		sweepSpec(t, staleModel, acc, 60, 512, 256, maxBatch, truth),
+		sweepSpec(t, freshModel, acc, 30, 512, 256, maxBatch, truth),
+		sweepSpec(t, freshModel, acc, 60, 512, 256, maxBatch, truth),
+		sweepSpec(t, freshModel, acc, 90, 512, 256, maxBatch, truth),
+		sweepSpec(t, freshModel, acc, 120, 512, 256, maxBatch, truth),
+		sweepSpec(t, freshModel, acc, 60, 1024, 128, maxBatch, truth),
+		sweepSpec(t, freshModel, acc, 60, 256, 512, maxBatch, truth),
+	}
+	md, err := ts.Calibrate(mixed)
+	if err != nil {
+		t.Fatalf("mixed Calibrate failed: %v", err)
+	}
+	if len(md.PerfData) != 1 {
+		t.Fatalf("expected exactly 1 entry (the fresh pair), got %d: %+v", len(md.PerfData), md.PerfData)
+	}
+	if md.PerfData[0].Name != freshModel {
+		t.Fatalf("expected only the freshly-calibrated pair %q in response, got %q (stale params leaked)",
+			freshModel, md.PerfData[0].Name)
+	}
+}
+
 func relErr(got, want float32) float64 {
 	if want == 0 {
 		return 0

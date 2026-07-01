@@ -583,20 +583,23 @@ func (ts *TunerService) Calibrate(specs []optconfig.ServerSpec) (*optconfig.Mode
 		return nil, fmt.Errorf("no calibration points with active traffic in request")
 	}
 
-	calibratedAny := false
+	// Build the response from only the groups calibrated in THIS call. buildModelData reads params
+	// from the store, so passing groups that failed calibration would leak stale params (from an
+	// earlier /tune or /calibrate) into the response as if freshly calibrated.
+	calibratedGroups := make(map[string][]optconfig.ServerSpec)
 	for key, replicas := range groups {
 		model, accelerator := splitKey(key)
 		if err := ts.calibrateGroup(model, accelerator, key, replicas); err != nil {
 			slog.Warn("calibration failed for group", "key", key, "err", err)
 			continue
 		}
-		calibratedAny = true
+		calibratedGroups[key] = replicas
 	}
-	if !calibratedAny {
+	if len(calibratedGroups) == 0 {
 		return nil, fmt.Errorf("calibration produced no results for any model/accelerator group")
 	}
 
-	modelData := ts.buildModelData(groups)
+	modelData := ts.buildModelData(calibratedGroups)
 	if len(modelData.PerfData) == 0 {
 		return nil, fmt.Errorf("calibration produced no results for any model/accelerator group")
 	}
@@ -627,6 +630,15 @@ func (ts *TunerService) calibrateGroup(model, accelerator, key string, replicas 
 	if ts.maxConditionNumber > 0 && ie.LastConditionNumber() > ts.maxConditionNumber {
 		return fmt.Errorf("calibration fit for %s/%s ill-conditioned (kappa=%.3g > %.3g): sweep grid lacks operating-point spread",
 			model, accelerator, ie.LastConditionNumber(), ts.maxConditionNumber)
+	}
+	// Reject a poor fit rather than storing it. Fit() reports lastFitFuncValue = math.MaxFloat64 when it
+	// fell back to the single-point GuessInitState (Nelder-Mead pre-flight error, unexpected termination,
+	// or non-positive params) — those paths leave lastConditionNumber unset, so the condition-number guard
+	// above cannot catch them. The MaxFloat64 sentinel is rejected unconditionally; a converged-but-poor
+	// fit is rejected against initFitThreshold, matching the sliding-window init path.
+	if fv := ie.LastFitFuncValue(); fv == math.MaxFloat64 || (ts.initFitThreshold > 0 && fv > ts.initFitThreshold) {
+		return fmt.Errorf("calibration fit for %s/%s poor (funcValue=%.3g): rejecting rather than storing a degenerate calibration",
+			model, accelerator, fv)
 	}
 
 	// Store graduated so the warm-up gate no longer blocks this pair (UpdateCount >= warmUpCycles).
