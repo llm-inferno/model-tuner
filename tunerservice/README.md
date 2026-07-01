@@ -104,11 +104,11 @@ Reports, per `(model, accelerator)` pair the tuner has begun observing, the fact
 
 ### `POST /calibrate`
 
-Fits `(alpha, beta, gamma)` jointly from a **batch of deliberately-diverse swept operating points** for each `(model, accelerator)` group, in one shot — the persistent-excitation cure for the single-operating-point unidentifiability the guards above only mitigate. Unlike `/tune` (one operating point per cycle), the joint multi-point fit reuses the same `InitEstimator` Nelder-Mead + condition-number guard. On success it stores the fit graduated (so the warm-up gate clears) and seeds the per-pair estimators from the sweep so subsequent `/tune` cycles track drift from the calibrated point. The control-loop Collector produces the sweep points; the controller drives this endpoint only when `/calibration-status` reports `needsCalibration`.
+Fits `(alpha, beta, gamma)` jointly from a **batch of deliberately-diverse swept operating points** for each `(model, accelerator)` group, in one shot — the persistent-excitation cure for the single-operating-point unidentifiability the guards above only mitigate. Unlike `/tune` (one operating point per cycle), the joint multi-point fit reuses the same `InitEstimator` Nelder-Mead + condition-number and fit-quality guards. On success it stores the fit graduated (so the warm-up gate clears) and seeds the per-pair estimators from the sweep so subsequent `/tune` cycles track drift from the calibrated point. The control-loop Collector produces the sweep points; the controller drives this endpoint only when `/calibration-status` reports `needsCalibration`.
 
 **Request body:** `[]config.ServerSpec` (the swept operating points; same shape as `/tune`).
 
-**Response:** `config.ModelData` with the calibrated `alpha/beta/gamma`. `422` if no group could be calibrated (e.g. the sweep grid lacked operating-point spread and the fit is still ill-conditioned).
+**Response:** `config.ModelData` containing only the groups successfully calibrated in this call — a group whose fit is rejected is omitted, so parameters left in the store by a prior `/tune` or `/calibrate` never leak into the response as if freshly calibrated. A group's fit is rejected when it remains ill-conditioned (the sweep grid lacked operating-point spread) or is otherwise poor/degenerate (fit residual above `TUNER_INIT_FIT_THRESHOLD`, or Nelder-Mead fell back to a single-point guess). `422` if no group in the batch could be calibrated.
 
 Calibration state (`calibrated` flags, `ParameterStore`) is in-memory — a pair is re-calibrated after a tuner restart.
 

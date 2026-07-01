@@ -50,7 +50,7 @@ Observer → Environment → Tuner (EKF predict + update) → GetParams() → Tu
 
 - **`pkg/service/`** — Orchestration layer. `TunerService` groups replica `ServerSpec`s by (model, accelerator), runs the init phase via `InitEstimator`, then dispatches to either `SlidingWindowEstimator` (SWNM mode) or the EKF `Tuner` (EKF mode). `ParameterStore` holds tuned parameters across cycles. Importable without gin.
 
-- **`tunerservice/`** — Thin Gin HTTP adapter over `pkg/service.TunerService`. Exposes `POST /tune`, `GET /getparams`, `GET /warmup`, `POST /merge`. Contains only routing, handlers, and HTTP constants.
+- **`tunerservice/`** — Thin Gin HTTP adapter over `pkg/service.TunerService`. Exposes `POST /tune`, `GET /getparams`, `GET /warmup`, `POST /merge`, `POST /calibrate`, `GET /calibration-status`. Contains only routing, handlers, and HTTP constants.
 
 ### Environment variants
 
@@ -82,7 +82,7 @@ The primary deployment is as a sidecar container in the `inferno` pod (see `gith
 | `TUNER_ESTIMATOR_MODE` | Estimation backend: `ekf` or `sliding-window` | `ekf` |
 | `TUNER_WINDOW_SIZE` | (SWNM) Sliding window capacity | `10` |
 | `TUNER_RESIDUAL_THRESHOLD` | (SWNM) Per-observation relative error cutoff for outlier rejection | `0.5` |
-| `TUNER_INIT_FIT_THRESHOLD` | (SWNM) If `InitEstimator.Fit()` objective value exceeds this, the pair is permanently routed to EKF instead. Set to `0` to disable. | `10.0` |
+| `TUNER_INIT_FIT_THRESHOLD` | Fit-quality threshold on the `InitEstimator.Fit()` objective value. (SWNM) A pair whose init fit exceeds this is permanently routed to EKF instead. (Calibrate) A `/calibrate` group whose joint fit exceeds this is rejected rather than stored (a fit that fell back to a single-point guess reports `math.MaxFloat64` and is always rejected). Set to `0` to disable the threshold check. | `10.0` |
 | `TUNER_MAX_CONDITION_NUMBER` | Identifiability guard. If a fit's Jacobian condition number (relative-scaled, evaluated at the fitted params) exceeds this, the fit is degenerate/unidentifiable (e.g. collapsed β/γ from a window lacking operating-point spread): the sliding-window estimator holds the last good fit, and the init estimator falls back to `GuessInitState`. When a good fit is held, a transient single-cycle EKF excursion seeded at it refines the fit against the offending observation (#20); `GuessInitState` is seed-anchored to the config `initState`, pinning γ and solving α,β so the cold-start guess stays feasible (#21). Healthy fits sit well below ~100; degenerate fits exceed a few thousand. Set to `0` to disable. | `1000.0` |
 | `COLLECTOR_HOST` / `COLLECTOR_PORT` | Prometheus collector address | — |
 | `TOKEN` | Bearer token for Prometheus | — |
